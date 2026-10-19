@@ -1,0 +1,7 @@
+total_commands_processed:1703880
+total_net_input_bytes:61339669
+total_net_output_bytes:184018937
+total_net_repl_input_bytes:0
+total_net_repl_output_bytes:0
+total_net_cluster_slot_import_bytes:0
+total_net_cluster_slot_export_bytes:0

@@ -116,6 +116,12 @@ Achieved ops/s, sends skipped because a connection already had the maximum reque
 | maxmemory 256mb LRU, Zipf 0.99 | valkey-1t | 105,541 [103,987–107,157] | 9.27 | 432 | 1,113 | 0.730 | evicted/run 282,809; keys held 1,613,352 |
 | maxmemory 256mb LRU, Zipf 0.99 | rvk-1t | 99,773 [97,695–99,911] | 9.88 | 478 | 869 | 0.719 | evicted/run 281,447; keys held 1,392,537 |
 | maxmemory 256mb LRU, Zipf 0.99 | rvk-2t | 249,160 [217,724–256,916] | 7.37 | 184 | 463 | 0.775 | evicted/run -1,260,502; keys held 1,392,142; client-bound |
+| round 2: maxmemory 256mb LRU, uniform | valkey-1t | 110,248 [109,853–110,652] | 8.93 | 419 | 1,027 | 0.322 | evicted/run 671,432; keys held 1,613,242 |
+| round 2: maxmemory 256mb LRU, uniform | rvk-1t | 104,028 [102,011–109,785] | 9.39 | 466 | 971 | 0.200 | evicted/run 751,814; keys held 999,305 |
+| round 2: maxmemory 256mb LRU, uniform | rvk-2t | 243,411 [238,840–245,144] | 7.90 | 189 | 494 | 0.200 | evicted/run 1,738,645; keys held 998,920 |
+| round 2: maxmemory 256mb LRU, Zipf 0.99 | valkey-1t | 114,423 [112,658–118,819] | 8.62 | 403 | 1,020 | 0.733 | evicted/run 298,778; keys held 1,613,404 |
+| round 2: maxmemory 256mb LRU, Zipf 0.99 | rvk-1t | 122,185 [112,419–123,265] | 8.07 | 370 | 896 | 0.725 | evicted/run 336,668; keys held 999,318 |
+| round 2: maxmemory 256mb LRU, Zipf 0.99 | rvk-2t | 277,119 [272,370–287,214] | 6.75 | 162 | 431 | 0.776 | evicted/run 624,753; keys held 998,928; client-bound |
 | new connection per request, GET | valkey-1t | 14,138 [14,122–14,143] | 37.55 | 1,207 | 21,903 | – |  |
 | new connection per request, GET | valkey-io2 | 13,971 [13,934–14,208] | 106.01 | 1,055 | 24,879 | – |  |
 | new connection per request, GET | rvk-1t | 14,146 [14,118–14,164] | 32.02 | 1,231 | 16,879 | – |  |
@@ -202,6 +208,8 @@ Assumed price $0.05 per vCPU-hour (illustrative, not a quote). "Provisioned" cou
 | rvk | 1,000,000 | 100 | 116 | 172.5 | 176.2 |
 | valkey | 100,000 | 16,384 | 16400 | 20,533.8 | 20,703.5 |
 | rvk | 100,000 | 16,384 | 16400 | 20,530.3 | 20,932.9 |
+| rvk-r2 | 1,000,000 | 100 | 116 | 197.6 | 254.5 |
+| rvk-r2 | 100,000 | 16,384 | 16400 | 20,526.0 | 20,771.5 |
 
 Start to first PONG, empty dataset: valkey median 37.5 ms (n=5); rvk median 5.8 ms (n=5).
 
@@ -218,10 +226,10 @@ ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU i
 
 | workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
 |---|---|---|---|---|---|---|---|---|
-| read90 | 110,111 (8.77; 1,015) | 94,643 (20.80; 1,090) | 239,153 (8.10; 534) | 111,712 (8.74; 911) | – | 1.01× | – | – |
-| mixed50 | – | – | – | – | – | – | – | – |
-| write90 | – | – | – | – | – | – | – | – |
-| skew-read90 | – | – | – | – | – | – | – | – |
+| read90 | 110,111 (8.77; 1,015) | 94,643 (20.80; 1,090) | 239,153 (8.10; 534) | 111,712 (8.74; 911) | 262,324 (7.00; 425) | 1.01× | 2.77× | 1.10× |
+| mixed50 | 111,052 (8.85; 1,048) | 89,094 (22.12; 1,064) | 236,908 (8.22; 510) | 107,266 (9.16; 901) | 266,718⚠ (7.16; 424) | 0.97× | 2.99× | 1.13× |
+| write90 | 108,388 (9.09; 1,060) | 89,062 (22.21; 1,010) | 236,044 (8.26; 509) | 111,598 (8.77; 878) | 281,193⚠ (6.85; 413) | 1.03× | 3.16× | 1.19× |
+| skew-read90 | 117,649 (8.37; 972) | 91,100 (21.62; 992) | 269,408⚠ (7.15; 438) | 114,848 (8.55; 860) | 283,628⚠ (6.52; 422) | 0.98× | 3.11× | 1.05× |
 
 ### P-R2. Round 2 (post hoc): pipeline depth 16
 
@@ -229,10 +237,10 @@ ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU i
 
 | workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
 |---|---|---|---|---|---|---|---|---|
-| read90-p16 | – | – | – | – | – | – | – | – |
-| mixed50-p16 | – | – | – | – | – | – | – | – |
-| write90-p16 | – | – | – | – | – | – | – | – |
-| skew-read90-p16 | – | – | – | – | – | – | – | – |
+| read90-p16 | 869,489 (1.13; 2,114) | 955,944 (2.07; 1,607) | 1,724,880 (1.15; 1,061) | 834,234 (1.18; 1,976) | 1,459,888 (1.33; 1,199) | 0.96× | 1.53× | 0.85× |
+| mixed50-p16 | 825,866 (1.19; 2,138) | 667,656 (2.96; 2,294) | 1,544,124 (1.28; 1,158) | 825,119 (1.19; 2,114) | 1,435,821 (1.35; 1,273) | 1.00× | 2.15× | 0.93× |
+| write90-p16 | 753,880 (1.31; 2,400) | 503,570 (3.91; 3,191) | 1,394,974 (1.42; 1,333) | 832,696 (1.19; 2,071) | 1,476,312 (1.33; 1,179) | 1.10× | 2.93× | 1.06× |
+| skew-read90-p16 | 993,474 (0.99; 1,702) | 1,016,816 (1.93; 1,749) | 1,894,787 (1.02; 921) | 1,128,571 (0.87; 1,436) | 1,939,006 (1.00; 876) | 1.14× | 1.91× | 1.02× |
 
 ### P-R3. Round 2 (post hoc): 200 connections
 
@@ -240,8 +248,8 @@ ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU i
 
 | workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
 |---|---|---|---|---|---|---|---|---|
-| read90 | – | – | – | – | – | – | – | – |
-| read90-p16 | – | – | – | – | – | – | – | – |
+| read90 | 127,120 (7.75; 3,389) | 102,816 (19.12; 3,811) | 262,637 (7.47; 1,731) | 131,029 (7.49; 3,168) | 302,912⚠ (6.42; 1,332) | 1.03× | 2.95× | 1.15× |
+| read90-p16 | 844,592 (1.16; 7,705) | 1,012,684 (1.95; 5,964) | 1,738,141 (1.13; 4,069) | 833,450 (1.18; 7,090) | 1,531,259 (1.26; 4,444) | 0.99× | 1.51× | 0.88× |
 
 ### P-RG. Round 2 (post hoc): Gate 3 rules applied to the re-measured points
 
@@ -249,13 +257,33 @@ Each point uses the unpipelined run unless the load generator was above 170% CPU
 
 | point | run used | R1 | R2 | R3 | rvk-2t CPU µs/op | best native CPU µs/op | R3 ≥ 1.20 | R2 ≥ 1.20 and R3 ≥ 0.90 |
 |---|---|---|---|---|---|---|---|---|
-| read90 c=50 | unpipelined | 1.01× | – | – | – | 8.10 | no | no |
-| mixed50 c=50 | unpipelined | – | – | – | – | – | no | no |
-| write90 c=50 | unpipelined | – | – | – | – | – | no | no |
-| skew-read90 c=50 | unpipelined | – | – | – | – | – | no | no |
-| read90 c=200 | unpipelined | – | – | – | – | – | no | no |
+| read90 c=50 | unpipelined | 1.01× | 2.77× | 1.10× | 7.00 | 8.10 | no | yes |
+| mixed50 c=50 | p16 | 1.00× | 2.15× | 0.93× | 1.35 | 1.28 | no | yes |
+| write90 c=50 | p16 | 1.10× | 2.93× | 1.06× | 1.33 | 1.42 | no | yes |
+| skew-read90 c=50 | p16 | 1.14× | 1.91× | 1.02× | 1.00 | 1.02 | no | yes |
+| read90 c=200 | p16 | 0.99× | 1.51× | 0.88× | 1.26 | 1.13 | no | no |
 
-Points with R3 ≥ 1.20: **0 of 5**. Points with R2 ≥ 1.20 and R3 ≥ 0.90: **0 of 5**. Points where rvk-2t CPU/op ≤ best native: **0 of 5**.
+Points with R3 ≥ 1.20: **0 of 5**. Points with R2 ≥ 1.20 and R3 ≥ 0.90: **4 of 5**. Points where rvk-2t CPU/op ≤ best native: **3 of 5**.
+
+### P-RO. Round 2 (post hoc): latency at a fixed offered load
+
+Precise pacing (`--spin-pacing`). Each cell: p50 / p99 / p99.9 µs measured from the actual send time, then the same from the intended send time (includes load-generator lag), then server CPU µs/op.
+
+| offered ops/s | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t |
+|---|---|---|---|---|---|
+| 20,000 | 32 / 227 / 2,090; intended 35 / 680 / 3,121 (13.2) | 30 / 284 / 2,892; intended 33 / 851 / 3,701 (13.1) | 36 / 465 / 3,701; intended 40 / 1,065 / 4,612 (15.6) | 27 / 151 / 2,167; intended 30 / 493 / 3,152 (10.1) | 32 / 323 / 3,002; intended 35 / 929 / 5,763 (12.2) |
+| 60,000 | 33 / 586 / 3,426; intended 38 / 930 / 4,506 (9.7) | 34 / 1,255 / 5,132; intended 39 / 1,970 / 6,296 (27.0) | 33 / 399 / 3,432; intended 39 / 939 / 5,181 (11.3) | 29 / 320 / 3,080; intended 33 / 780 / 4,116 (7.8) | 32 / 321 / 2,210; intended 39 / 859 / 4,657 (9.1) |
+| 100,000 | 38 / 1,012 / 3,731; intended 43 / 1,480 / 5,771 (8.0) | 41 / 1,706 / 8,413; intended 46 / 2,109 / 9,077 (18.6) | 34 / 485 / 3,559; intended 42 / 1,051 / 5,370 (10.0) | 31 / 773 / 4,293; intended 37 / 1,281 / 5,792 (7.1) | 33 / 334 / 2,941; intended 42 / 757 / 3,596 (8.2) |
+
+p99 at the same offered load, rvk-2t relative to the best Valkey option (lowest p99), measured from the actual send time [and from the intended send time]:
+
+| offered ops/s | achieved by all? | vs best native 2-CPU (io2, 2shard) | vs best single-endpoint (1t, io2) |
+|---|---|---|---|
+| 20,000 | yes | 1.14× [1.09×] | 1.42× [1.37×] |
+| 60,000 | yes | 0.80× [0.91×] | 0.55× [0.92×] |
+| 100,000 | yes | 0.69× [0.72×] | 0.33× [0.51×] |
+
+Load-generator send lag with spin pacing: p99 median 232 µs across runs (range 88–739 µs).
 
 ### P-$. Cost per million operations, read90, 50 connections
 
@@ -267,14 +295,15 @@ Assumed price $0.05 per vCPU-hour (illustrative, not a quote). "Provisioned" cou
 | valkey-io2 | 20.80 | 47,321 ops/s | 21.1 | $771 | +466 $ (2.53×) |
 | valkey-2shard | 8.10 | 119,576 ops/s | 8.4 | $305 | +0 $ (1.00×) |
 | rvk-1t | 8.74 | 111,712 ops/s | 9.0 | $327 | +21 $ (1.07×) |
+| rvk-2t | 7.00 | 131,162 ops/s | 7.6 | $278 | -27 $ (0.91×) |
 
 ### P-V. Validity checks
 
-- runs: loadgen 372, rsclient 42, valkey-benchmark 21
+- runs: loadgen 573, rsclient 42, valkey-benchmark 21
 - loadgen runs where a GET received a non-bulk, non-nil reply (reply misattribution): 0
 - error replies, timeouts and lost connections summed over loadgen and rsclient runs: 0, 0, 0 (valkey-benchmark does not report errors in this mode)
-- runs flagged client-bound (load generator > 170% CPU): 106
-- client vs server-side (INFO) throughput, absolute difference: median 0.2%, max 1.5% (n=216; closed-loop unpipelined loadgen runs)
+- runs flagged client-bound (load generator > 170% CPU): 165
+- client vs server-side (INFO) throughput, absolute difference: median 0.2%, max 1.5% (n=297; closed-loop unpipelined loadgen runs)
 - binaries now vs environment_part2.json: loadgen same, rvk-server different, rsclient different, valkey-server same
 - binaries now vs environment_part2_r2.json: loadgen same, rvk-server same, rsclient same, valkey-server same
 
