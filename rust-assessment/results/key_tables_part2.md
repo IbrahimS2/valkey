@@ -71,7 +71,9 @@ Load-generator send lag with spin pacing: p99 median 272 µs across runs (range 
 
 Timer pacing (as in Part I), 60,000 ops/s, for comparison: valkey-1t p50 242 / p99 1,700 µs; rvk-2t p50 122 / p99 1,185 µs.
 
-### P-L. Overload: open loop above capacity (read90, 50 connections; added after pre-registration)
+### P-L. High offered load, open loop (read90, 50 connections; added after pre-registration)
+
+Intended as overload, but no topology was overloaded: open-loop clients keep several requests in flight per connection, which works like pipelining, so every server sustained both rates.
 
 Achieved ops/s, sends skipped because a connection already had the maximum requests in flight, and p50 / p99 µs from the actual and from the intended send time.
 
@@ -210,13 +212,70 @@ Failover: server `SIGKILL`ed 4 s into a 10 s open-loop run at 20k ops/s and rest
 | valkey | 3 | 79,448 | 0 | 0 | 50 | 0.048 | 1.000 |
 | rvk | 3 | 79,458 | 0 | 0 | 50 | 0.025 | 1.000 |
 
+### P-R1. Round 2 (post hoc): saturation throughput, 50 connections, unpipelined
+
+ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU in at least one trial (throughput is then a lower bound). 
+
+| workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
+|---|---|---|---|---|---|---|---|---|
+| read90 | 110,111 (8.77; 1,015) | 94,643 (20.80; 1,090) | 239,153 (8.10; 534) | 111,712 (8.74; 911) | – | 1.01× | – | – |
+| mixed50 | – | – | – | – | – | – | – | – |
+| write90 | – | – | – | – | – | – | – | – |
+| skew-read90 | – | – | – | – | – | – | – | – |
+
+### P-R2. Round 2 (post hoc): pipeline depth 16
+
+ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU in at least one trial (throughput is then a lower bound). 
+
+| workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
+|---|---|---|---|---|---|---|---|---|
+| read90-p16 | – | – | – | – | – | – | – | – |
+| mixed50-p16 | – | – | – | – | – | – | – | – |
+| write90-p16 | – | – | – | – | – | – | – | – |
+| skew-read90-p16 | – | – | – | – | – | – | – | – |
+
+### P-R3. Round 2 (post hoc): 200 connections
+
+ops/s median (server CPU µs/op; p99 µs). ⚠ = load generator above 170% CPU in at least one trial (throughput is then a lower bound). 
+
+| workload | valkey-1t | valkey-io2 | valkey-2shard | rvk-1t | rvk-2t | R1 rvk-1t÷valkey-1t | R2 rvk-2t÷valkey-io2 | R3 rvk-2t÷valkey-2shard |
+|---|---|---|---|---|---|---|---|---|
+| read90 | – | – | – | – | – | – | – | – |
+| read90-p16 | – | – | – | – | – | – | – | – |
+
+### P-RG. Round 2 (post hoc): Gate 3 rules applied to the re-measured points
+
+Each point uses the unpipelined run unless the load generator was above 170% CPU in a trial of a topology being compared, in which case the depth-16 pipelined run decides (as pre-registered). CPU/op columns compare `rvk-2t` with the best Valkey 2-CPU option (lowest CPU/op of `valkey-io2` and `valkey-2shard`) on the run used.
+
+| point | run used | R1 | R2 | R3 | rvk-2t CPU µs/op | best native CPU µs/op | R3 ≥ 1.20 | R2 ≥ 1.20 and R3 ≥ 0.90 |
+|---|---|---|---|---|---|---|---|---|
+| read90 c=50 | unpipelined | 1.01× | – | – | – | 8.10 | no | no |
+| mixed50 c=50 | unpipelined | – | – | – | – | – | no | no |
+| write90 c=50 | unpipelined | – | – | – | – | – | no | no |
+| skew-read90 c=50 | unpipelined | – | – | – | – | – | no | no |
+| read90 c=200 | unpipelined | – | – | – | – | – | no | no |
+
+Points with R3 ≥ 1.20: **0 of 5**. Points with R2 ≥ 1.20 and R3 ≥ 0.90: **0 of 5**. Points where rvk-2t CPU/op ≤ best native: **0 of 5**.
+
+### P-$. Cost per million operations, read90, 50 connections
+
+Assumed price $0.05 per vCPU-hour (illustrative, not a quote). "Provisioned" counts the vCPUs a topology occupies (1 for single-threaded servers). Linear scale-out to 1M ops/s is assumed, not verified.
+
+| topology | consumed CPU-s per Mop | throughput per provisioned vCPU | vCPUs for 1M ops/s | monthly cost at 730 h | vs valkey-2shard |
+|---|---|---|---|---|---|
+| valkey-1t | 8.77 | 110,111 ops/s | 9.1 | $331 | +26 $ (1.09×) |
+| valkey-io2 | 20.80 | 47,321 ops/s | 21.1 | $771 | +466 $ (2.53×) |
+| valkey-2shard | 8.10 | 119,576 ops/s | 8.4 | $305 | +0 $ (1.00×) |
+| rvk-1t | 8.74 | 111,712 ops/s | 9.0 | $327 | +21 $ (1.07×) |
+
 ### P-V. Validity checks
 
-- runs: loadgen 360, rsclient 42, valkey-benchmark 21
+- runs: loadgen 372, rsclient 42, valkey-benchmark 21
 - loadgen runs where a GET received a non-bulk, non-nil reply (reply misattribution): 0
 - error replies, timeouts and lost connections summed over loadgen and rsclient runs: 0, 0, 0 (valkey-benchmark does not report errors in this mode)
 - runs flagged client-bound (load generator > 170% CPU): 106
-- client vs server-side (INFO) throughput, absolute difference: median 0.2%, max 1.5% (n=204; closed-loop unpipelined loadgen runs)
-- binaries match environment_part2.json now: loadgen yes, rvk-server yes, rsclient yes, valkey-server yes
+- client vs server-side (INFO) throughput, absolute difference: median 0.2%, max 1.5% (n=216; closed-loop unpipelined loadgen runs)
+- binaries now vs environment_part2.json: loadgen same, rvk-server different, rsclient different, valkey-server same
+- binaries now vs environment_part2_r2.json: loadgen same, rvk-server same, rsclient same, valkey-server same
 
 Failed runs: none.
