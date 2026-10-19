@@ -1,0 +1,16 @@
+# Benchmark instruments for the Rust-vs-Valkey assessment.
+# None of these crates is production code; see ../../BENCHMARK_PLAN.md.
+[workspace]
+resolver = "2"
+members = ["resp-common", "loadgen", "proxy-poc", "mapmem"]
+
+[workspace.package]
+edition = "2021"
+publish = false
+license = "BSD-3-Clause"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 1
