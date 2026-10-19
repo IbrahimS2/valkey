@@ -33,9 +33,9 @@ changes where that work runs. Options considered:
 
 | Part | Design |
 |---|---|
-| Event loop (`server.rs`) | One `mio` poll (edge-triggered `epoll`) per worker thread, each with its own `SO_REUSEPORT` listener, so the kernel spreads connections across workers without a dispatcher. Reads continue until a short read (no wasted `EAGAIN` read); all replies from one read go out in one `write`; `WRITABLE` interest only while output is pending; input processing pauses while more than 64 MB of output is pending |
+| Event loop (`server.rs`) | One `mio` poll (edge-triggered `epoll`) per worker thread, each with its own `SO_REUSEPORT` listener, so the kernel spreads connections across workers without a dispatcher. Each chunk read is executed before the next read, and reading stops at a short read (no wasted `EAGAIN` read). **Round 2:** replies are written once per event-loop pass, after every ready connection has been served, as Valkey does in `beforeSleep`. Round 1 wrote each connection's replies as soon as they were produced, which woke the client once per reply, and the profile showed that as kernel time. `WRITABLE` interest only while output is pending; reading stops while more than 64 MB of output is pending |
 | Protocol (`resp.rs`) | RESP2 multibulk and inline parsing that reproduces Valkey's limits, error texts and `sdsparsearg` tokenizing; RESP2/RESP3 reply encoding |
-| Keyspace (`store.rs`) | 64 shards, each a `Mutex` around a dense slab of entries plus a `hashbrown` index of 4-byte slab positions. Key and value share one allocation. `foldhash` hashing; the shard is taken from separate hash bits so the index stays well distributed. Per-shard min-heap of expiry deadlines |
+| Keyspace (`store.rs`) | 64 shards, each a cache-line-padded `Mutex` around a `hashbrown::HashTable` of 32-byte entries; key and value share one allocation. Round 1 kept entries in a separate slab with a table of slab positions, which cost one more dependent cache miss per lookup. Keyed SipHash (round 1: foldhash); the shard comes from hash bits the table does not use. Lock-free per-shard counters, published only on change. Per-shard min-heap of expiry deadlines |
 | Commands (`cmd.rs`) | 61 commands (FEATURE_MATRIX.md) with Valkey's arity, flags and error texts. Multi-key commands lock their shards in ascending order (atomic and deadlock-free). `EXEC` locks the shards of every queued and watched key, then checks the watch flags |
 | Expiry | Lazy on access; active expiry per shard every 100 ms with a 25% time budget |
 | Eviction | `allkeys-lru` (5 samples, 16-entry candidate pool, as in `evict.c`), `allkeys-random`, `noeviction`; memory measured from jemalloc |
@@ -89,4 +89,8 @@ Filled from BENCHMARK_RESULTS.md Part II.
 
 ## 5. Multi-agent review of `rvk-server`
 
-Filled after the review completes.
+Five read-only reviewers with adversarial verifiers reported 57 findings: 52 confirmed, 4 refuted, 1 uncertain.
+They include two self-deadlocks reachable by any client and a remotely triggerable abort, none of which the
+differential test, the concurrency invariants or the benchmarks had found. REASSESSMENT.md §7 summarizes them
+and what they mean for the evidence. FEATURE_MATRIX.md §11 says how each was handled. The raw findings are in
+`results/poc/review_findings.json`.

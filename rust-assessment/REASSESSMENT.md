@@ -37,6 +37,16 @@ a Part I number was misleading, the Part I tables are left as they were and this
      than rebuilt.
 
    Decision thresholds were committed (`da0b089`) before any measurement of these candidates.
+6. **The first `rvk-server` build passed every pre-registered correctness check and still had defects that
+   could hang or crash it.** A multi-agent code review found 52 confirmed defects after the round 1
+   measurements, two of them self-deadlocks (§7). All are fixed or documented, and a regression suite now
+   reproduces them against Valkey. The round 1 performance numbers stand, because no benchmark exercised those
+   paths. But "passed Gate 2" turned out to be weaker evidence than it sounds.
+7. **The profiles explained the first build's per-core deficit, and fixing it was an implementation matter.**
+   rvk-1t used more kernel time per request than Valkey, because it woke the client once per reply instead of
+   once per event-loop pass. The second build writes replies as Valkey does in `beforeSleep`. That change, and
+   a flatter hash table, were measured as a disclosed post hoc round 2 with every baseline re-run
+   (BENCHMARK_RESULTS.md Part II).
 
 ## 2. How the audit was done, and process disclosures
 
@@ -174,7 +184,7 @@ reasoning in Part II uses Part II's profile.
 
 Defects in new code are listed so the evidence for them is not lost.
 
-### 6.1 `rvk-server` defects found by its own test harnesses (all fixed before any benchmark)
+### 6.1 `rvk-server` defects found by its own test harnesses (all fixed before the formal round 1 matrix)
 
 | Defect | Found by | Fix |
 |---|---|---|
@@ -186,7 +196,7 @@ Defects in new code are listed so the evidence for them is not lost.
 | Inline tokenizer did not concatenate quoted segments as `sdsparsearg` does; CRLF checks too lax | Valkey's `unit/protocol` | Rewritten to `sdsparsearg` semantics; strict CRLF |
 | `INCRBYFLOAT` formatting | Differential test | Improved to shortest round-trip; still differs from `long double` (declared partial) |
 
-The multi-agent review's confirmed findings are recorded in §7.
+The multi-agent review's findings are in §7. None of the harnesses above found them.
 
 ### 6.2 Measurement-tool defects found and fixed
 
@@ -209,5 +219,62 @@ reason Part II does not recommend that cache for data where staleness matters.
 
 ## 7. Multi-agent review of `rvk-server`
 
-See ARCHITECTURE_COMPARISON.md §5 for the confirmed findings, their severity, and whether each was fixed or
-documented.
+**How it ran.** One workflow with five read-only reviewers: concurrency, protocol and I/O, command semantics
+against Valkey's C source, security and denial of service, and benchmark fairness. Each reviewer's findings went
+to an adversarial verifier told to refute them by tracing the code. The reviewers could not build or run
+anything, because the round 1 matrix was running on the same machine. The first launch lost four agents to the
+organization spend limit; the workflow was resumed after the reset, with the security reviewer's prompt
+sharpened because its first pass returned nothing. Full findings, verdicts and verifier reasoning are in
+[`results/poc/review_findings.json`](results/poc/review_findings.json).
+
+**What it found.** 57 findings: 52 confirmed, 4 refuted (all from the fairness reviewer), 1 uncertain (the timing
+side channel of a non-constant-time password comparison, which the verifier judged too small to measure
+remotely; it is fixed anyway). The most serious:
+
+| Finding | Severity | Why the harnesses missed it |
+|---|---|---|
+| `EXEC` self-deadlocks when `INFO` or `UNWATCH` is queued: both lock shards the transaction already holds, and `std::sync::Mutex` is not reentrant. The stuck worker then blocks every thread that touches those shards | critical | The differential test never queued INFO or UNWATCH inside MULTI |
+| `MULTI`/`EXEC` bypasses `maxmemory` entirely: queued writes are never checked, so memory grows without bound | high | The invariants and benchmarks never wrote through transactions under `maxmemory` |
+| `DEBUG SLEEP inf` panics, and `panic = "abort"` kills the process. DEBUG was open to every client | high | No test sent a non-finite float |
+| Never-authenticated clients had no input or output caps, so a client without the password could make the server buffer gigabytes | high | No test pipelined without reading while unauthenticated |
+| An incomplete multibulk request was re-parsed from its start on every read: quadratic CPU for large argument counts | medium | Requests in tests were small |
+| A FIN arriving with the last data was never seen, so half-closing clients hung and dead connections leaked | medium | Test clients never half-close |
+
+All confirmed findings are fixed or documented as partial (FEATURE_MATRIX.md §11). The 22 scenarios in
+[`poc/tests/regressions.py`](poc/tests/regressions.py) compare Valkey and rvk-server on the findings that a client
+can observe. All 22 pass on the round 2 build. On the round 1 binary, 17 fail and 4 cannot start (that binary
+lacks `--enable-debug-command`), which shows the scenarios detect the defects.
+
+**What it means for the evidence.** The review was the only check that found any of these. Gate 2 as
+pre-registered (differential test, concurrency invariants, error-free benchmarks) was met by a build that could
+be hung by any client in two commands. Two lessons for the decision:
+
+* The correctness evidence for a new server has to include adversarial review and fault-oriented tests, not only
+  differential and load tests. That is a recurring cost of Candidate A that Valkey users do not pay
+  (ARCHITECTURE_DECISION.md §7).
+* The round 1 performance numbers are valid for what they measured. No benchmark sends MULTI with INFO or UNWATCH,
+  writes through transactions, half-closes connections, or runs unauthenticated, so the defective paths were never
+  on the measured path.
+
+**Fairness findings.** Two were confirmed and affect how the comparison is read, though no result changed
+direction. Valkey spends about 5% of pipelined CPU on per-command timing and statistics (`getMonotonicUs` 5.0% in
+the depth-16 profile), which rvk does not do, and that favors rvk. rvk's round 1 build paid costs of its own: false
+sharing on shared counters, an `Arc` clone and a vector allocation per command, and each key hashed twice. Those
+disfavored it. The verifier refuted the claim that foldhash invited hash flooding, as speculative. The round 2
+build uses keyed SipHash anyway, as Valkey does, so that difference no longer exists.
+
+## 8. What the Part II profiles say about Part I's conclusions
+
+* **The kernel share holds on the new host.** `valkey-1t` spends 72% of its unpipelined CPU in the kernel on the
+  Part II host (`results/profile2/valkey-1t-p1.dso.txt`), against 70.6% in Part I. The per-core Amdahl bound
+  is about 1.4× on both hosts. The host change did not undermine it.
+* **A Rust server is subject to the same bound, and the first build was below Valkey.** rvk-1t spent 83% in the
+  kernel. The excess was in the wakeup path (`_raw_spin_unlock_irqrestore`, 33% against Valkey's 19%), not in
+  the language. Writing replies once per event-loop pass, as Valkey does, removed most of it.
+* **With pipelining, user space matters and Valkey's prior optimization shows.** At depth 16 the first build
+  spent about 40% of its CPU in hash lookups and key comparisons, against about 6% for Valkey, which prefetches
+  keys for a whole batch (`memory_prefetch.c`). Flattening rvk's table helped a little. Batch prefetching was not
+  built, so that gap remains in round 2.
+* **"Language is not the lever" survives, with a qualification.** The first build lost to Valkey per core for
+  implementation reasons, and the second closed part of the gap for implementation reasons. Neither result is
+  about Rust. What a multi-threaded architecture can add over one core is measured by R2 and R3, not R1.

@@ -179,3 +179,110 @@ The proxy adds little time to recovery itself. Its effect on recovery is the sem
   This check is weak: every key holds the same value, so a reply swapped between two GETs would go unnoticed.
   §4's differential and property tests would be needed for a real claim.
 * Zero RESP errors, zero timeouts, zero lost connections in every throughput run, direct or through the proxy.
+
+---
+
+# Part II: threat model for the reassessment candidates
+
+Part I covered the proxy (Candidate B). This part covers `rvk-server` (Candidate A) and the client-side options
+measured as Candidate C. FEATURE_MATRIX.md lists what `rvk-server` implements. REASSESSMENT.md §7 covers the
+multi-agent review, which is the main source of the security evidence below.
+
+## 7. Candidate A: `rvk-server`
+
+### 7.1 Boundaries
+
+`rvk-server` would replace Valkey at the same boundary. There is no extra hop and no new secret holder, which
+avoids the proxy's main structural risks (Part I §1–2). The trade is that every byte from every client is now
+parsed and executed by about 4,100 lines of new code instead of Valkey's long-tested parser and command
+implementations.
+
+### 7.2 STRIDE
+
+| Threat | `rvk-server` (round 2 build) | Compared with Valkey |
+|---|---|---|
+| **Spoofing** | `requirepass` for the `default` user only, compared in constant time. No ACL users, no TLS, so credentials and data cross the network in clear text | Weaker: Valkey has ACL users, TLS and client certificates |
+| **Tampering** | Multi-key commands and transactions are atomic across threads (concurrency invariants). No TLS | Same guarantees; no transport protection |
+| **Repudiation** | No `ACL LOG`, `COMMANDLOG`, `MONITOR` or audit trail | Weaker |
+| **Information disclosure** | Every authenticated client can read every key (no key-pattern ACLs). `KEYS`, `INFO` and `CLIENT LIST` behave like Valkey's for the `default` user | Weaker: no per-user permissions |
+| **Denial of service** | See §7.3. Every panic is an abort of the whole process (`panic = "abort"`), and with no persistence the whole dataset is lost | Valkey also exits on assertion failures, but restarts with its RDB/AOF data |
+| **Elevation of privilege** | No scripting, modules, `CONFIG SET` of paths, or `DEBUG` unless enabled, so the classic Valkey escalation routes (Lua sandbox escapes, `CONFIG SET dir`, `MODULE LOAD`) do not exist | Smaller surface, because there are fewer features |
+
+### 7.3 Denial of service: what the review found and what remains
+
+The review confirmed several ways for one client to stop or exhaust the server. They are fixed and covered by
+regression scenarios or unit tests (FEATURE_MATRIX.md §11):
+
+* two self-deadlocks inside `EXEC` (any client, two commands);
+* a process abort through `DEBUG SLEEP inf`;
+* unbounded memory: transactions bypassing `maxmemory`, unbounded transaction queues, no caps for
+  never-authenticated clients, and a read buffer that could grow to twice the configured limit;
+* quadratic CPU: re-parsing a partly received request on every read, and an O(n²) WATCH duplicate check under
+  every shard lock;
+* leaked connections: a FIN arriving with data never seen, and no TCP keepalive.
+
+Remaining known exposure:
+
+| Exposure | Effect | Mitigation if this were a product |
+|---|---|---|
+| Whole-value copies in APPEND/SETRANGE | Repeated small APPENDs to one large value cost quadratic CPU under that shard's lock | Grow values in place |
+| `KEYS` and `FLUSHALL` hold all 64 shard locks | One `KEYS *` on a large dataset stalls every thread, where Valkey stalls its one thread | Same advice as for Valkey (use `SCAN`, which rvk lacks); or iterate shard by shard |
+| Lock-held work generally | A slow command on one key stalls every thread that needs that shard | Bound per-command work, as Valkey's single thread implicitly does by being single |
+| Any panic left in the code | Aborts the process and loses all data | Fuzzing of the parser and commands; a supervisor; persistence |
+| 100 ms memory snapshot | New reply buffers can push memory past `maxmemory` for up to one tick | Count buffer allocations, as Valkey does |
+
+### 7.4 What Rust prevented and what it did not
+
+The review found 52 confirmed defects in about 4,100 lines and **no memory-safety defect**. `rvk-server`'s own
+code has one `unsafe` block (the `getrlimit`/`setrlimit` call). Rust's guarantees ruled out buffer overflows,
+use-after-free and data races. The defects that were found are the classes Rust does not prevent:
+
+| Class | Count among the most severe findings | Example |
+|---|---|---|
+| Deadlock | 2 | Re-locking a non-reentrant mutex inside `EXEC` |
+| Panic turned into a crash | 1 | `Duration::from_secs_f64(inf)` |
+| Unbounded resource use | 5 | Transaction queues, unauthenticated buffers, read-buffer growth |
+| Algorithmic complexity | 3 | Quadratic re-parsing, O(n²) WATCH, whole-value copies |
+| Semantic divergence from Valkey | many (low severity) | WATCH expiry rules, EXPIRETIME rounding, error ordering |
+
+So the security argument for a Rust rewrite ("memory safety") is real but narrow. It removes the bug class behind
+many historical Redis CVEs: integer overflows that became heap corruption in protocol and data-type code. It does nothing for availability, which is what a
+new implementation got wrong here. A product would need the hardening Valkey has accumulated over many years: fuzzing,
+fault injection and a long tail of resource limits.
+
+### 7.5 Supply chain
+
+Nine third-party crates in `rvk-server`'s build: `mio`, `socket2`, `hashbrown`, `libc`, `log`, `paste`, and the
+`tikv-jemallocator`, `tikv-jemalloc-ctl` and `tikv-jemalloc-sys` crates (the last bundles jemalloc's C code, the
+allocator Valkey also uses). The versions are pinned in `poc/Cargo.lock`. The `rsclient` measurement tool pulls in
+about 80 crates through the `redis` crate and tokio. That is the dependency surface an application takes on when
+adopting Candidate C.
+
+## 8. Candidate C: client-side options
+
+### 8.1 Multiplexing (redis-rs `MultiplexedConnection`, GLIDE)
+
+* **Head-of-line blocking:** all logical clients on a socket share one reply stream, so one slow command (a large
+  `MGET`, a blocking command) delays every request queued behind it.
+* **Shared fate:** a dropped connection fails every in-flight request of every logical client on it. The client
+  library must surface that as an error, never retry non-idempotent writes, and must not hide a server restart
+  the way the Part I proxy did (Part I §6.2).
+* **Connection-scoped state:** `MULTI`/`WATCH`, `SELECT`, blocking commands and Pub/Sub need a dedicated
+  connection. Multiplexing libraries handle this by checking out a connection, which the application must use.
+* These are the same semantic risks as the proxy (Part I §3), but they stay inside the application's own process
+  and failure domain, with no extra network hop or secret.
+
+### 8.2 Client-side caching (redis-rs 1.7.1 `cache-aio`, experimental)
+
+* **Staleness, measured:** the cache served stale values on about 34% of GETs on a skewed read-heavy workload,
+  with a stale age of up to seconds (BENCHMARK_RESULTS.md Part II). Most of that comes from a race in the
+  library. A GET reply is inserted after an invalidation for the same key has already been processed, and the
+  server has by then stopped tracking the key for this client, so no further invalidation will come
+  (REASSESSMENT.md §6.3). Such an entry stays stale until LRU eviction or the 30-minute default TTL.
+* **Consequence:** this is a correctness failure for any data where a stale read matters (sessions, permissions,
+  counters, feature flags). An application could adopt this feature only for data that tolerates unbounded
+  staleness, and then a plain TTL cache gives the same guarantee more simply.
+* **Data exposure:** cached values live in application memory for up to the client TTL, outside the server's
+  access control and `FLUSHALL`.
+* **Not measured:** GLIDE's client-side cache, which is a separate implementation. Whether it has the same race
+  is unknown.

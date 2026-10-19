@@ -175,7 +175,9 @@ def overload_table(out):
     recs = ok(load("p2-overload"))
     if not recs:
         return
-    out += ["### P-L. Overload: open loop above capacity (read90, 50 connections; added after pre-registration)", "",
+    out += ["### P-L. High offered load, open loop (read90, 50 connections; added after pre-registration)", "",
+            "Intended as overload, but no topology was overloaded: open-loop clients keep several requests in "
+            "flight per connection, which works like pipelining, so every server sustained both rates.", "",
             "Achieved ops/s, sends skipped because a connection already had the maximum requests in flight, and "
             "p50 / p99 µs from the actual and from the intended send time.", "",
             "| offered ops/s | topology | achieved ops/s | skipped sends | p50 / p99 (sent) | p50 / p99 (intended) | "
@@ -206,6 +208,8 @@ def other_table(out, vcpu_hour):
                              ("p2-cold", "cold-read90", "cold cache, read90"),
                              ("p2-evict", "evict-uniform", "maxmemory 256mb LRU, uniform"),
                              ("p2-evict", "evict-skew", "maxmemory 256mb LRU, Zipf 0.99"),
+                             ("p2-r2-evict", "evict-uniform", "round 2: maxmemory 256mb LRU, uniform"),
+                             ("p2-r2-evict", "evict-skew", "round 2: maxmemory 256mb LRU, Zipf 0.99"),
                              ("p2-churn", "get100-churn", "new connection per request, GET"),
                              ("p2-aof", "read90-aof", "AOF everysec, read90 (Valkey only)"),
                              ("p2-aof", "write90-aof", "AOF everysec, write90 (Valkey only)")):
@@ -410,16 +414,17 @@ def validity(suites):
         lines.append(f"- client vs server-side (INFO) throughput, absolute difference: median "
                      f"{100 * statistics.median(gaps):.1f}%, max {100 * gaps[-1]:.1f}% (n={len(gaps)}; closed-loop "
                      f"unpipelined loadgen runs)")
-    env = os.path.join(s1.RESULTS, "environment_part2.json")
-    if os.path.exists(env):
-        rec = json.load(open(env))["binaries_sha256"]
-        paths = {"loadgen": os.path.join(s1.HERE, "rust", "target", "release", "loadgen"),
-                 "rvk-server": os.path.join(s1.HERE, "..", "poc", "target", "release", "rvk-server"),
-                 "rsclient": os.path.join(s1.HERE, "..", "poc", "target", "release", "rsclient"),
-                 "valkey-server": os.path.join(s1.HERE, "..", "..", "src", "valkey-server")}
-        same = {k: (os.path.exists(p) and sha256(p) == rec.get(k)) for k, p in paths.items()}
-        lines.append("- binaries match environment_part2.json now: " + ", ".join(f"{k} {'yes' if v else 'NO'}"
-                                                                               for k, v in same.items()))
+    paths = {"loadgen": os.path.join(s1.HERE, "rust", "target", "release", "loadgen"),
+             "rvk-server": os.path.join(s1.HERE, "..", "poc", "target", "release", "rvk-server"),
+             "rsclient": os.path.join(s1.HERE, "..", "poc", "target", "release", "rsclient"),
+             "valkey-server": os.path.join(s1.HERE, "..", "..", "src", "valkey-server")}
+    now = {k: sha256(p) for k, p in paths.items() if os.path.exists(p)}
+    for name in ("environment_part2.json", "environment_part2_r2.json"):
+        env = os.path.join(s1.RESULTS, name)
+        if os.path.exists(env):
+            rec = json.load(open(env))["binaries_sha256"]
+            lines.append(f"- binaries now vs {name}: " + ", ".join(
+                f"{k} {'same' if now.get(k) == rec.get(k) else 'different'}" for k in paths))
     return lines, failed
 
 
@@ -480,7 +485,7 @@ def main():
         if r2_ol:
             openloop_table(key, r2_ol, title="### P-RO. Round 2 (post hoc): latency at a fixed offered load")
         cost_table(key, c2, vh)
-    lines, failed = validity(SUITES + ["p2-r2-core", "p2-r2-core-p16", "p2-r2-conns", "p2-r2-openloop"])
+    lines, failed = validity(SUITES + ["p2-r2-core", "p2-r2-core-p16", "p2-r2-conns", "p2-r2-openloop", "p2-r2-evict"])
     key += ["### P-V. Validity checks", ""] + lines + ["", "Failed runs: " + ("none." if not failed else "")]
     key += [f"- {f}" for f in failed]
 
