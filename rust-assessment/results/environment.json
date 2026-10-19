@@ -1,0 +1,39 @@
+{
+  "captured": "2026-10-19T05:08:39Z",
+  "uname": {
+    "system": "Linux",
+    "node": "vm",
+    "release": "6.18.44-fc-v139",
+    "version": "#1 SMP PREEMPT_DYNAMIC @0",
+    "machine": "x86_64",
+    "processor": "x86_64"
+  },
+  "os_release": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"",
+  "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Xeon(R) Processor @ 2.80GHz\nCPU family:                              6\nModel:                                   85\nThread(s) per core:                      1\nCore(s) per socket:                      4\nSocket(s):                               1\nStepping:                                7\nBogoMIPS:                                5600.64\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves arat umip avx512_vnni md_clear arch_capabilities\nHypervisor vendor:                       KVM\nVirtualization type:                     full\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               128 KiB (4 instances)\nL2 cache:                                4 MiB (4 instances)\nL3 cache:                                33 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Mitigation; Aligned branch/return thunks\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Vmscape:                   Not affected",
+  "meminfo_total": "MemTotal:       16479424 kB",
+  "thp": "always [madvise] never",
+  "somaxconn": "4096",
+  "overcommit_memory": "0",
+  "nofile_limit": "20000",
+  "valkey_version": "Valkey server v=255.255.255 sha=741b0159:0 malloc=jemalloc-5.3.0 bits=64 build=df7db72d84652a47",
+  "git_head": "741b0159f5f1169bbb87b847463aaa52e86cfd60",
+  "valkey_build_cflags": "OPTIMIZATION?=-O3",
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+  "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+  "python": "3.13.16",
+  "binaries_sha256": {
+    "valkey-server": "a8531cbe32633cc7d5a2b720b479bdbba2b974bed1d5a21fb17c3025b6b00476",
+    "valkey-benchmark": "fb1c51ba6a70e1274a19a0c62fd8d7ea29428dd008f065a9e81b0046d817f000",
+    "loadgen": "b54998b6cfc5415050f6adb80227c108d286826ca0f335fdfdb4cd1a00f48bb0",
+    "proxy-poc": "3fd513a96a371bc802f5cf69561f4ac4c0bd7c96c8dbec7776d30b66632ebe18",
+    "mapmem": "1c2d8717093a95e7fd53f1ba9cb94109083103baf338bb3b12f040c5cd251a6b"
+  },
+  "cpu_layout": {
+    "server_side": [
+      "0",
+      "1"
+    ],
+    "client": "2,3"
+  }
+}
