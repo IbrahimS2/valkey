@@ -1,0 +1,40 @@
+    26.27%  rvk-server         [.] _RNvMs1_NtCshW45RROdNQH_10rvk_server5storeNtB5_5Shard6lookup
+    22.18%  [kernel.kallsyms]  [k] _raw_spin_unlock_irqrestore
+    11.63%  libc.so.6          [.] __memcmp_evex_movbe
+     8.77%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server6server7process
+     3.13%  rvk-server         [.] _RINvNtCscI6d9CVNmLh_4core3ptr9drop_glueNtNtCshW45RROdNQH_10rvk_server3cmd5LocksEBF_
+               0x1
+     1.60%  libc.so.6          [.] __memmove_avx512_unaligned_erms
+               0x1
+     1.36%  [vdso]             [.] 0x0000000000000896
+                          0x1
+     0.99%  [kernel.kallsyms]  [k] tcp_sendmsg_locked
+     0.69%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server3cmd6lookup
+     0.67%  [kernel.kallsyms]  [k] tcp_rcv_established
+     0.64%  [kernel.kallsyms]  [k] skb_release_data
+     0.63%  [kernel.kallsyms]  [k] skb_defer_free_flush
+     0.60%  [kernel.kallsyms]  [k] _copy_to_iter
+     0.55%  rvk-server         [.] _RNvMs0_NtCshW45RROdNQH_10rvk_server3cmdNtB5_2Cx4find
+     0.53%  [kernel.kallsyms]  [k] do_syscall_64
+     0.45%  [kernel.kallsyms]  [k] __inet_lookup_established
+     0.41%  [kernel.kallsyms]  [k] tcp_clean_rtx_queue
+     0.39%  libc.so.6          [.] __send
+     0.37%  [kernel.kallsyms]  [k] _raw_spin_unlock_irq
+     0.37%  [kernel.kallsyms]  [k] __alloc_skb
+     0.36%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server3cmd10key_shards
+     0.34%  rvk-server         [.] _RNvMNtNtNtNtCsgczF5crJ4sT_3std3sys4sync5mutex5futexNtB2_5Mutex14lock_contended
+     0.34%  [kernel.kallsyms]  [k] read_tsc
+     0.33%  [kernel.kallsyms]  [k] __skb_datagram_iter
+     0.32%  [kernel.kallsyms]  [k] skb_clone
+     0.30%  [kernel.kallsyms]  [k] tcp_recvmsg_locked
+     0.28%  [kernel.kallsyms]  [k] tcp_rcv_space_adjust
+     0.27%  rvk-server         [.] _RNvMNtNtNtNtCsgczF5crJ4sT_3std3sys3pal4unix4timeNtB2_8Timespec12sub_timespec.llvm.2564870832852997069
+     0.27%  [kernel.kallsyms]  [k] bbr_update_model
+     0.27%  [kernel.kallsyms]  [k] sock_def_readable
+     0.26%  libc.so.6          [.] __libc_recv
+     0.26%  [kernel.kallsyms]  [k] __raw_callee_save___pv_queued_spin_unlock
+     0.26%  [kernel.kallsyms]  [k] fdget
+     0.25%  [kernel.kallsyms]  [k] __dev_queue_xmit
+     0.25%  rvk-server         [.] _RINvNtNtCsgczF5crJ4sT_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNvNtCshW45RROdNQH_10rvk_server6server3runs2_00INtNtCscI6d9CVNmLh_4core6result6ResultuNtNtNtB6_2io5error5ErrorEEB1f_
+     0.25%  [kernel.kallsyms]  [k] ip_finish_output2
+     0.24%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server3cmd7cmd_get

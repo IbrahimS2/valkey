@@ -1,0 +1,3 @@
+total_commands_processed:9307089
+total_net_input_bytes:335055193
+total_net_output_bytes:1005165504

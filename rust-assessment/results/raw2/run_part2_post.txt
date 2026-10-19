@@ -1,0 +1,88 @@
+== suite p2-clients: 13 runs -> /home/user/valkey/rust-assessment/bench/../results/raw2/p2-clients.jsonl
+[1/13] valkey-1t      rs-skew-read90-mux1 c=50    rate=0      t2      209182 ops/s  p50=226us p99=465us  server_cpu=34% client_cpu=122%  1.616us/op  err=0
+[2/13] valkey-io2     rs-skew-read90-mux1 c=50    rate=0      t0      194469 ops/s  p50=239us p99=565us  server_cpu=129% client_cpu=115%  6.649us/op  err=0
+[3/13] valkey-io2     rs-skew-read90-mux1 c=50    rate=0      t1      194475 ops/s  p50=237us p99=618us  server_cpu=140% client_cpu=112%  7.194us/op  err=0
+[4/13] valkey-io2     rs-skew-read90-mux1 c=50    rate=0      t2      178557 ops/s  p50=262us p99=598us  server_cpu=136% client_cpu=115%  7.611us/op  err=0
+[5/13] rvk-2t         rs-skew-read90-mux1 c=50    rate=0      t0      197880 ops/s  p50=237us p99=504us  server_cpu=29% client_cpu=123%  1.486us/op  err=0
+[6/13] rvk-2t         rs-skew-read90-mux1 c=50    rate=0      t1      210616 ops/s  p50=224us p99=449us  server_cpu=27% client_cpu=128%  1.291us/op  err=0
+[7/13] rvk-2t         rs-skew-read90-mux1 c=50    rate=0      t2      198708 ops/s  p50=234us p99=518us  server_cpu=29% client_cpu=124%  1.449us/op  err=0
+[8/13] valkey-1t      rs-skew-read90-mux1-cache c=50    rate=0      t0      191377 ops/s  p50=2us p99=1368us  server_cpu=46% client_cpu=129%  2.425us/op  err=0
+[9/13] valkey-1t      rs-skew-read90-mux1-cache c=50    rate=0      t1      230532 ops/s  p50=2us p99=1106us  server_cpu=43% client_cpu=133%  1.848us/op  err=0
+[10/13] valkey-1t      rs-skew-read90-mux1-cache c=50    rate=0      t2      254003 ops/s  p50=2us p99=958us  server_cpu=42% client_cpu=135%  1.673us/op  err=0
+[11/13] valkey-io2     rs-skew-read90-mux1-cache c=50    rate=0      t0      221878 ops/s  p50=2us p99=1212us  server_cpu=144% client_cpu=130%  6.513us/op  err=0
+[12/13] valkey-io2     rs-skew-read90-mux1-cache c=50    rate=0      t1      243410 ops/s  p50=2us p99=1106us  server_cpu=145% client_cpu=130%  5.961us/op  err=0
+[13/13] valkey-io2     rs-skew-read90-mux1-cache c=50    rate=0      t2      243569 ops/s  p50=2us p99=1073us  server_cpu=146% client_cpu=131%  5.998us/op  err=0
+== suite p2-overload: 30 runs -> /home/user/valkey/rust-assessment/bench/../results/raw2/p2-overload.jsonl
+[1/30] valkey-1t      read90         c=50    rate=150000 t0      149997 ops/s  p50=173us p99=2488us  server_cpu=98% client_cpu=197%  6.513us/op  err=0
+[2/30] valkey-1t      read90         c=50    rate=150000 t1      149976 ops/s  p50=231us p99=2421us  server_cpu=97% client_cpu=198%  6.488us/op  err=0
+[3/30] valkey-1t      read90         c=50    rate=150000 t2      149998 ops/s  p50=228us p99=3357us  server_cpu=98% client_cpu=198%  6.507us/op  err=0
+[4/30] valkey-io2     read90         c=50    rate=150000 t0      149998 ops/s  p50=231us p99=3178us  server_cpu=196% client_cpu=197%  13.08us/op  err=0
+[5/30] valkey-io2     read90         c=50    rate=150000 t1      149998 ops/s  p50=212us p99=14672us  server_cpu=191% client_cpu=195%  12.713us/op  err=0
+[6/30] valkey-io2     read90         c=50    rate=150000 t2      150000 ops/s  p50=209us p99=22200us  server_cpu=191% client_cpu=196%  12.74us/op  err=0
+[7/30] valkey-2shard  read90         c=50    rate=150000 t0      149999 ops/s  p50=42us p99=4592us  server_cpu=138% client_cpu=197%  9.187us/op  err=0
+[8/30] valkey-2shard  read90         c=50    rate=150000 t1      149999 ops/s  p50=45us p99=5513us  server_cpu=134% client_cpu=197%  8.953us/op  err=0
+[9/30] valkey-2shard  read90         c=50    rate=150000 t2      149999 ops/s  p50=40us p99=3731us  server_cpu=126% client_cpu=197%  8.42us/op  err=0
+[10/30] rvk-1t         read90         c=50    rate=150000 t0      149999 ops/s  p50=42us p99=994us  server_cpu=91% client_cpu=198%  6.047us/op  err=0
+[11/30] rvk-1t         read90         c=50    rate=150000 t1      149613 ops/s  p50=48us p99=3121us  server_cpu=92% client_cpu=197%  6.122us/op  err=0
+[12/30] rvk-1t         read90         c=50    rate=150000 t2      149997 ops/s  p50=48us p99=1057us  server_cpu=91% client_cpu=197%  6.073us/op  err=0
+[13/30] rvk-2t         read90         c=50    rate=150000 t0      149998 ops/s  p50=42us p99=3348us  server_cpu=115% client_cpu=196%  7.647us/op  err=0
+[14/30] rvk-2t         read90         c=50    rate=150000 t1      149998 ops/s  p50=39us p99=700us  server_cpu=114% client_cpu=197%  7.58us/op  err=0
+[15/30] rvk-2t         read90         c=50    rate=150000 t2      149999 ops/s  p50=42us p99=1570us  server_cpu=114% client_cpu=196%  7.613us/op  err=0
+[16/30] valkey-1t      read90         c=50    rate=300000 t0      299994 ops/s  p50=618us p99=12902us  server_cpu=98% client_cpu=195%  3.27us/op  err=0
+[17/30] valkey-1t      read90         c=50    rate=300000 t1      299999 ops/s  p50=620us p99=6042us  server_cpu=98% client_cpu=196%  3.277us/op  err=0
+[18/30] valkey-1t      read90         c=50    rate=300000 t2      299996 ops/s  p50=665us p99=4923us  server_cpu=99% client_cpu=198%  3.307us/op  err=0
+[19/30] valkey-io2     read90         c=50    rate=300000 t0      300002 ops/s  p50=466us p99=16572us  server_cpu=195% client_cpu=194%  6.497us/op  err=0
+[20/30] valkey-io2     read90         c=50    rate=300000 t1      300012 ops/s  p50=473us p99=11362us  server_cpu=194% client_cpu=197%  6.476us/op  err=0
+[21/30] valkey-io2     read90         c=50    rate=300000 t2      300002 ops/s  p50=510us p99=8684us  server_cpu=194% client_cpu=197%  6.483us/op  err=0
+[22/30] valkey-2shard  read90         c=50    rate=300000 t0      300002 ops/s  p50=180us p99=3344us  server_cpu=192% client_cpu=197%  6.407us/op  err=0
+[23/30] valkey-2shard  read90         c=50    rate=300000 t1      299999 ops/s  p50=143us p99=6627us  server_cpu=190% client_cpu=197%  6.35us/op  err=0
+[24/30] valkey-2shard  read90         c=50    rate=300000 t2      299997 ops/s  p50=155us p99=3715us  server_cpu=193% client_cpu=197%  6.427us/op  err=0
+[25/30] rvk-1t         read90         c=50    rate=300000 t0      299998 ops/s  p50=456us p99=12059us  server_cpu=98% client_cpu=197%  3.253us/op  err=0
+[26/30] rvk-1t         read90         c=50    rate=300000 t1      299999 ops/s  p50=330us p99=3039us  server_cpu=99% client_cpu=197%  3.307us/op  err=0
+[27/30] rvk-1t         read90         c=50    rate=300000 t2      300002 ops/s  p50=335us p99=2521us  server_cpu=98% client_cpu=198%  3.28us/op  err=0
+[28/30] rvk-2t         read90         c=50    rate=300000 t0      299936 ops/s  p50=78us p99=4102us  server_cpu=172% client_cpu=197%  5.745us/op  err=0
+[29/30] rvk-2t         read90         c=50    rate=300000 t1      299996 ops/s  p50=66us p99=3875us  server_cpu=175% client_cpu=197%  5.823us/op  err=0
+[30/30] rvk-2t         read90         c=50    rate=300000 t2      300032 ops/s  p50=68us p99=6296us  server_cpu=172% client_cpu=197%  5.743us/op  err=0
+== suite p2-aof: 12 runs -> /home/user/valkey/rust-assessment/bench/../results/raw2/p2-aof.jsonl
+[1/12] valkey-1t      read90-aof     c=50    rate=0      t0      117880 ops/s  p50=388us p99=984us  server_cpu=99% client_cpu=81%  8.364us/op  err=0
+[2/12] valkey-1t      read90-aof     c=50    rate=0      t1      119348 ops/s  p50=384us p99=963us  server_cpu=99% client_cpu=80%  8.287us/op  err=0
+[3/12] valkey-1t      read90-aof     c=50    rate=0      t2      116149 ops/s  p50=393us p99=992us  server_cpu=99% client_cpu=80%  8.489us/op  err=0
+[4/12] valkey-2shard  read90-aof     c=50    rate=0      t0      236981 ops/s  p50=186us p99=543us  server_cpu=192% client_cpu=147%  8.098us/op  err=0
+[5/12] valkey-2shard  read90-aof     c=50    rate=0      t1      239823 ops/s  p50=184us p99=550us  server_cpu=193% client_cpu=143%  8.048us/op  err=0
+[6/12] valkey-2shard  read90-aof     c=50    rate=0      t2      223405 ops/s  p50=195us p99=595us  server_cpu=190% client_cpu=142%  8.496us/op  err=0
+[7/12] valkey-1t      write90-aof    c=50    rate=0      t0       76137 ops/s  p50=430us p99=4948us  server_cpu=73% client_cpu=51%  9.64us/op  err=0
+[8/12] valkey-1t      write90-aof    c=50    rate=0      t1       73627 ops/s  p50=451us p99=4936us  server_cpu=74% client_cpu=55%  10.119us/op  err=0
+[9/12] valkey-1t      write90-aof    c=50    rate=0      t2       81643 ops/s  p50=424us p99=4833us  server_cpu=77% client_cpu=56%  9.419us/op  err=0
+[10/12] valkey-2shard  write90-aof    c=50    rate=0      t0      178386 ops/s  p50=209us p99=4243us  server_cpu=164% client_cpu=109%  9.177us/op  err=0
+[11/12] valkey-2shard  write90-aof    c=50    rate=0      t1      174566 ops/s  p50=210us p99=4004us  server_cpu=165% client_cpu=110%  9.441us/op  err=0
+[12/12] valkey-2shard  write90-aof    c=50    rate=0      t2      172780 ops/s  p50=207us p99=4284us  server_cpu=162% client_cpu=109%  9.359us/op  err=0
+profiles written to /home/user/valkey/rust-assessment/bench/../results/profile2
+{"section": "p2-memory", "impl": "valkey", "keys": 1000000, "value_size": 100, "trial": 0, "used_memory_per_key": 169.5, "rss_per_key": 173.7, "info_rss_per_key": 173.9, "payload_per_key": 116, "ts": "2026-10-19T15:52:59Z"}
+{"section": "p2-memory", "impl": "valkey", "keys": 1000000, "value_size": 100, "trial": 1, "used_memory_per_key": 169.5, "rss_per_key": 173.7, "info_rss_per_key": 173.9, "payload_per_key": 116, "ts": "2026-10-19T15:53:02Z"}
+{"section": "p2-memory", "impl": "valkey", "keys": 1000000, "value_size": 100, "trial": 2, "used_memory_per_key": 169.5, "rss_per_key": 173.7, "info_rss_per_key": 173.9, "payload_per_key": 116, "ts": "2026-10-19T15:53:04Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 1000000, "value_size": 100, "trial": 0, "used_memory_per_key": 172.5, "rss_per_key": 176.1, "info_rss_per_key": 176.2, "payload_per_key": 116, "ts": "2026-10-19T15:53:06Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 1000000, "value_size": 100, "trial": 1, "used_memory_per_key": 172.5, "rss_per_key": 176.2, "info_rss_per_key": 176.2, "payload_per_key": 116, "ts": "2026-10-19T15:53:08Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 1000000, "value_size": 100, "trial": 2, "used_memory_per_key": 172.5, "rss_per_key": 176.2, "info_rss_per_key": 176.2, "payload_per_key": 116, "ts": "2026-10-19T15:53:10Z"}
+{"section": "p2-memory", "impl": "valkey", "keys": 100000, "value_size": 16384, "trial": 0, "used_memory_per_key": 20533.8, "rss_per_key": 20703.5, "info_rss_per_key": 20705.4, "payload_per_key": 16400, "ts": "2026-10-19T15:53:23Z"}
+{"section": "p2-memory", "impl": "valkey", "keys": 100000, "value_size": 16384, "trial": 1, "used_memory_per_key": 20533.8, "rss_per_key": 20703.5, "info_rss_per_key": 20705.4, "payload_per_key": 16400, "ts": "2026-10-19T15:53:28Z"}
+{"section": "p2-memory", "impl": "valkey", "keys": 100000, "value_size": 16384, "trial": 2, "used_memory_per_key": 20533.8, "rss_per_key": 20704.2, "info_rss_per_key": 20705.4, "payload_per_key": 16400, "ts": "2026-10-19T15:53:33Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 100000, "value_size": 16384, "trial": 0, "used_memory_per_key": 20530.3, "rss_per_key": 20945.1, "info_rss_per_key": 20945.3, "payload_per_key": 16400, "ts": "2026-10-19T15:53:36Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 100000, "value_size": 16384, "trial": 1, "used_memory_per_key": 20531.3, "rss_per_key": 20920.4, "info_rss_per_key": 20920.6, "payload_per_key": 16400, "ts": "2026-10-19T15:53:39Z"}
+{"section": "p2-memory", "impl": "rvk", "keys": 100000, "value_size": 16384, "trial": 2, "used_memory_per_key": 20529.0, "rss_per_key": 20932.9, "info_rss_per_key": 20933.0, "payload_per_key": 16400, "ts": "2026-10-19T15:53:43Z"}
+{"section": "p2-startup", "impl": "valkey", "trial": 0, "start_to_pong_seconds": 0.0357, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:43Z"}
+{"section": "p2-startup", "impl": "valkey", "trial": 1, "start_to_pong_seconds": 0.0369, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "valkey", "trial": 2, "start_to_pong_seconds": 0.0387, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "valkey", "trial": 3, "start_to_pong_seconds": 0.0375, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "valkey", "trial": 4, "start_to_pong_seconds": 0.0386, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "rvk", "trial": 0, "start_to_pong_seconds": 0.0057, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "rvk", "trial": 1, "start_to_pong_seconds": 0.0058, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "rvk", "trial": 2, "start_to_pong_seconds": 0.006, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "rvk", "trial": 3, "start_to_pong_seconds": 0.0058, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-startup", "impl": "rvk", "trial": 4, "start_to_pong_seconds": 0.0059, "note": "empty dataset; rvk-server has no persistence, so it always restarts empty", "ts": "2026-10-19T15:53:44Z"}
+{"section": "p2-failover", "impl": "valkey", "trial": 0, "restart_seconds": 0.049, "ops_completed": 79448, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:53:48Z"}
+{"section": "p2-failover", "impl": "valkey", "trial": 1, "restart_seconds": 0.048, "ops_completed": 79447, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:53:53Z"}
+{"section": "p2-failover", "impl": "valkey", "trial": 2, "restart_seconds": 0.048, "ops_completed": 79457, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:53:58Z"}
+{"section": "p2-failover", "impl": "rvk", "trial": 0, "restart_seconds": 0.005, "ops_completed": 79458, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:54:03Z"}
+{"section": "p2-failover", "impl": "rvk", "trial": 1, "restart_seconds": 0.025, "ops_completed": 79458, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:54:07Z"}
+{"section": "p2-failover", "impl": "rvk", "trial": 2, "restart_seconds": 0.025, "ops_completed": 79463, "ops_target": 200000, "errors": 0, "timeouts": 0, "conn_failures": 50, "hit_rate": 1.0, "ts": "2026-10-19T15:54:12Z"}
+./run_part2_post.sh: 10: ./summarize_part2.py: Permission denied

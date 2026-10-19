@@ -1,0 +1,6 @@
+    42.14%  [kernel.kallsyms]
+    41.73%  rvk-server       
+    14.34%  libc.so.6        
+                       0x1
+     1.80%  [vdso]           
+                                  0x1

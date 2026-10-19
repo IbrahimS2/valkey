@@ -22,9 +22,441 @@ valkey-1t Valkey-side cmds/s (INFO) 119,370; valkey-1t loopback bytes/op 144.5; 
 
 | topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| valkey-1t | 1 | 110,433 [110,433–110,433] | –% | 401 | 1,142 | 3,645 | 98 | 82 | 8.88 | 16.33 | 0.252 | 0 |
+| valkey-1t | 3 | 110,433 [105,020–111,271] | 3.1% | 409 | 1,142 | 3,645 | 98 | 79 | 8.88 | 16.33 | 0.252 | 0 |
+| valkey-io2 | 3 | 92,271 [89,498–96,374] | 3.7% | 507 | 1,137 | 4,223 | 197 | 78 | 21.35 | 29.89 | 0.301 | 0 |
+| valkey-2shard | 3 | 219,248 [216,439–227,922] | 2.7% | 198 | 543 | 2,839 | 192 | 149 | 8.53 | 15.39 | 0.127 | 0 |
+| rvk-1t | 3 | 100,043 [96,362–100,480] | 2.3% | 476 | 952 | 2,785 | 98 | 83 | 9.83 | 18.20 | 0.278 | 0 |
+| rvk-2t ⚠client-bound | 3 | 256,314 [250,222–258,341] | 1.7% | 175 | 454 | 2,435 | 185 | 170 | 7.30 | 13.87 | 0.108 | 0 |
 
-valkey-1t Valkey-side cmds/s (INFO) 109,835; valkey-1t loopback bytes/op 146.5.
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.84×, valkey-2shard: 1.99×, rvk-1t: 0.91×, rvk-2t: 2.32×.
+
+valkey-1t Valkey-side cmds/s (INFO) 109,835; valkey-1t loopback bytes/op 146.5; valkey-io2 Valkey-side cmds/s (INFO) 91,910; valkey-io2 loopback bytes/op 146.5; valkey-2shard Valkey-side cmds/s (INFO) 219,154; valkey-2shard loopback bytes/op 146.5; rvk-1t Valkey-side cmds/s (INFO) 100,287; rvk-1t loopback bytes/op 146.5; rvk-2t Valkey-side cmds/s (INFO) 256,609; rvk-2t loopback bytes/op 146.5.
+
+#### workload write90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 108,957 [103,982–113,589] | 4.4% | 405 | 1,153 | 3,740 | 99 | 82 | 9.05 | 16.59 | 0.255 | 0 |
+| valkey-io2 | 3 | 92,088 [90,926–92,522] | 0.9% | 515 | 1,101 | 3,475 | 197 | 74 | 21.42 | 29.72 | 0.302 | 0 |
+| valkey-2shard | 3 | 222,227 [184,396–232,644] | 11.9% | 204 | 531 | 1,981 | 195 | 149 | 8.78 | 15.50 | 0.125 | 0 |
+| rvk-1t | 3 | 97,726 [95,672–97,932] | 1.3% | 484 | 941 | 2,841 | 99 | 82 | 10.09 | 18.49 | 0.284 | 0 |
+| rvk-2t ⚠client-bound | 3 | 246,489 [241,722–255,984] | 2.9% | 184 | 464 | 2,206 | 190 | 166 | 7.71 | 14.55 | 0.113 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.85×, valkey-2shard: 2.04×, rvk-1t: 0.90×, rvk-2t: 2.26×.
+
+valkey-1t Valkey-side cmds/s (INFO) 109,350; valkey-1t loopback bytes/op 148.5; valkey-io2 Valkey-side cmds/s (INFO) 92,285; valkey-io2 loopback bytes/op 148.5; valkey-2shard Valkey-side cmds/s (INFO) 221,634; valkey-2shard loopback bytes/op 148.5; rvk-1t Valkey-side cmds/s (INFO) 97,282; rvk-1t loopback bytes/op 148.5; rvk-2t Valkey-side cmds/s (INFO) 245,696; rvk-2t loopback bytes/op 148.5.
+
+#### workload skew-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 115,557 [111,663–120,792] | 3.9% | 386 | 1,028 | 4,211 | 98 | 91 | 8.52 | 16.42 | 0.240 | 0 |
+| valkey-io2 | 3 | 102,453 [96,019–104,514] | 4.4% | 441 | 1,264 | 4,248 | 197 | 88 | 19.24 | 27.88 | 0.271 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 247,434 [234,089–249,889] | 3.5% | 183 | 484 | 2,096 | 192 | 172 | 7.78 | 14.60 | 0.112 | 0 |
+| rvk-1t | 3 | 104,767 [99,042–107,480] | 4.2% | 459 | 843 | 3,185 | 99 | 96 | 9.41 | 18.54 | 0.265 | 0 |
+| rvk-2t ⚠client-bound | 3 | 245,593 [244,851–270,404] | 5.7% | 179 | 455 | 2,476 | 176 | 180 | 7.18 | 14.19 | 0.113 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.89×, valkey-2shard: 2.14×, rvk-1t: 0.91×, rvk-2t: 2.13×.
+
+valkey-1t Valkey-side cmds/s (INFO) 115,748; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 102,272; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 247,641; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 104,582; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 245,071; rvk-2t loopback bytes/op 144.5.
+
+## Core workloads, pipeline 16
+
+#### workload read90-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 746,707 [741,872–759,542] | 1.2% | 1,012 | 2,472 | 4,612 | 99 | 44 | 1.32 | 1.90 | 0.037 | 0 |
+| valkey-io2 | 3 | 881,744 [881,075–884,211] | 0.2% | 896 | 1,915 | 4,465 | 198 | 56 | 2.23 | 2.87 | 0.032 | 0 |
+| valkey-2shard | 3 | 1,438,388 [1,378,500–1,447,697] | 2.6% | 519 | 1,228 | 2,836 | 196 | 82 | 1.37 | 1.94 | 0.019 | 0 |
+| rvk-1t | 3 | 547,637 [539,857–568,554] | 2.7% | 1,366 | 2,380 | 4,817 | 99 | 43 | 1.80 | 2.60 | 0.051 | 0 |
+| rvk-2t | 3 | 1,095,706 [1,089,555–1,097,558] | 0.4% | 702 | 1,146 | 3,068 | 197 | 76 | 1.80 | 2.49 | 0.025 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.18×, valkey-2shard: 1.93×, rvk-1t: 0.73×, rvk-2t: 1.47×.
+
+valkey-1t Valkey-side cmds/s (INFO) 743,100; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 881,162; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 1,439,197; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 546,618; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 1,094,532; rvk-2t loopback bytes/op 144.5.
+
+#### workload mixed50-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 659,218 [616,940–671,915] | 4.4% | 1,151 | 2,728 | 4,497 | 99 | 40 | 1.50 | 2.11 | 0.042 | 0 |
+| valkey-io2 | 3 | 691,292 [682,866–725,134] | 3.2% | 1,143 | 2,118 | 4,248 | 198 | 48 | 2.87 | 3.54 | 0.040 | 0 |
+| valkey-2shard | 3 | 1,291,894 [1,189,976–1,339,061] | 6.0% | 581 | 1,337 | 2,908 | 197 | 78 | 1.53 | 2.14 | 0.022 | 0 |
+| rvk-1t | 3 | 524,952 [524,171–540,192] | 1.7% | 1,437 | 2,396 | 4,223 | 99 | 44 | 1.88 | 2.70 | 0.053 | 0 |
+| rvk-2t | 3 | 1,021,338 [1,004,431–1,041,733] | 1.8% | 764 | 1,250 | 3,054 | 197 | 74 | 1.93 | 2.65 | 0.027 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.05×, valkey-2shard: 1.96×, rvk-1t: 0.80×, rvk-2t: 1.55×.
+
+valkey-1t Valkey-side cmds/s (INFO) 661,738; valkey-1t loopback bytes/op 146.5; valkey-io2 Valkey-side cmds/s (INFO) 690,335; valkey-io2 loopback bytes/op 146.5; valkey-2shard Valkey-side cmds/s (INFO) 1,292,092; valkey-2shard loopback bytes/op 146.5; rvk-1t Valkey-side cmds/s (INFO) 524,902; rvk-1t loopback bytes/op 146.5; rvk-2t Valkey-side cmds/s (INFO) 1,023,659; rvk-2t loopback bytes/op 146.5.
+
+#### workload write90-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 638,194 [614,323–647,515] | 2.7% | 1,175 | 2,869 | 5,075 | 99 | 39 | 1.54 | 2.15 | 0.044 | 0 |
+| valkey-io2 | 3 | 524,366 [512,786–545,917] | 3.2% | 1,476 | 2,685 | 5,394 | 198 | 39 | 3.78 | 4.53 | 0.053 | 0 |
+| valkey-2shard | 3 | 1,167,300 [1,073,252–1,243,091] | 7.3% | 636 | 1,528 | 3,451 | 197 | 74 | 1.69 | 2.32 | 0.024 | 0 |
+| rvk-1t | 3 | 515,203 [499,987–525,395] | 2.5% | 1,470 | 2,621 | 5,145 | 98 | 42 | 1.90 | 2.72 | 0.054 | 0 |
+| rvk-2t | 3 | 987,969 [959,389–1,000,252] | 2.1% | 792 | 1,419 | 3,951 | 196 | 70 | 1.98 | 2.68 | 0.028 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.82×, valkey-2shard: 1.83×, rvk-1t: 0.81×, rvk-2t: 1.55×.
+
+valkey-1t Valkey-side cmds/s (INFO) 640,831; valkey-1t loopback bytes/op 148.5; valkey-io2 Valkey-side cmds/s (INFO) 524,636; valkey-io2 loopback bytes/op 148.5; valkey-2shard Valkey-side cmds/s (INFO) 1,165,429; valkey-2shard loopback bytes/op 148.5; rvk-1t Valkey-side cmds/s (INFO) 516,147; rvk-1t loopback bytes/op 148.5; rvk-2t Valkey-side cmds/s (INFO) 987,725; rvk-2t loopback bytes/op 148.5.
+
+#### workload skew-read90-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 776,881 [754,532–810,270] | 3.6% | 951 | 2,279 | 4,944 | 98 | 74 | 1.27 | 2.22 | 0.036 | 0 |
+| valkey-io2 | 3 | 986,495 [968,248–1,066,862] | 5.2% | 821 | 1,590 | 4,366 | 197 | 92 | 2.00 | 2.93 | 0.028 | 0 |
+| valkey-2shard | 3 | 1,558,307 [1,292,037–1,558,739] | 10.5% | 461 | 1,096 | 3,770 | 195 | 144 | 1.25 | 2.20 | 0.018 | 0 |
+| rvk-1t | 3 | 745,142 [741,839–773,282] | 2.3% | 993 | 1,986 | 4,563 | 98 | 77 | 1.33 | 2.35 | 0.037 | 0 |
+| rvk-2t | 3 | 1,370,639 [1,310,820–1,416,737] | 3.9% | 565 | 998 | 3,133 | 197 | 128 | 1.44 | 2.37 | 0.020 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.27×, valkey-2shard: 2.01×, rvk-1t: 0.96×, rvk-2t: 1.76×.
+
+valkey-1t Valkey-side cmds/s (INFO) 779,888; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 989,901; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 1,554,883; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 746,270; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 1,364,961; rvk-2t loopback bytes/op 144.5.
+
+## Part I proxy (continuity)
+
+#### workload read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rust-proxy | 3 | 132,926 [131,098–135,260] | 1.6% | 355 | 783 | 2,146 | 176 | 102 | 13.18 | 20.95 | 0.209 | 0 |
+
+rust-proxy commands per upstream write 15.3; rust-proxy Valkey-side cmds/s (INFO) 132,907; rust-proxy loopback bytes/op 289.0.
+
+## Concurrency sweep
+
+#### read90, 1 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 21,603 [21,240–22,531] | 3.1% | 42 | 96 | 291 | 54 | 46 | 24.86 | 45.92 | 1.286 | 0 |
+| valkey-io2 | 3 | 21,336 [21,249–21,846] | 1.5% | 42 | 93 | 369 | 156 | 43 | 71.64 | 91.50 | 1.302 | 0 |
+| rvk-1t | 3 | 24,609 [23,973–24,943] | 2.0% | 38 | 82 | 227 | 49 | 49 | 19.91 | 39.98 | 1.129 | 0 |
+| rvk-2t | 3 | 24,544 [24,182–25,418] | 2.6% | 37 | 87 | 284 | 49 | 49 | 19.80 | 39.93 | 1.132 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.99×, rvk-1t: 1.14×, rvk-2t: 1.14×.
+
+valkey-1t Valkey-side cmds/s (INFO) 21,637; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 21,263; valkey-io2 loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 24,622; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 24,532; rvk-2t loopback bytes/op 144.5.
+
+#### read90, 10 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 74,306 [72,931–83,547] | 7.5% | 129 | 259 | 713 | 99 | 69 | 13.35 | 22.33 | 0.374 | 0 |
+| valkey-io2 | 3 | 77,137 [76,848–77,818] | 0.6% | 121 | 271 | 1,114 | 197 | 72 | 25.59 | 34.89 | 0.360 | 0 |
+| valkey-2shard | 3 | 169,453 [155,325–170,381] | 5.1% | 54 | 135 | 476 | 193 | 131 | 11.31 | 19.10 | 0.164 | 0 |
+| rvk-1t | 3 | 87,367 [85,687–90,114] | 2.5% | 107 | 221 | 597 | 99 | 78 | 11.29 | 20.58 | 0.318 | 0 |
+| rvk-2t | 3 | 219,098 [204,532–224,545] | 4.8% | 40 | 112 | 415 | 175 | 167 | 7.99 | 15.61 | 0.127 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.04×, valkey-2shard: 2.28×, rvk-1t: 1.18×, rvk-2t: 2.95×.
+
+valkey-1t Valkey-side cmds/s (INFO) 73,849; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 77,208; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 169,157; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 87,591; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 217,866; rvk-2t loopback bytes/op 174.5.
+
+#### read90, 200 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 122,463 [116,848–123,460] | 2.9% | 1,464 | 3,551 | 6,242 | 98 | 85 | 8.01 | 15.15 | 0.227 | 0 |
+| valkey-io2 | 3 | 114,533 [108,875–118,069] | 4.1% | 1,610 | 3,613 | 6,648 | 198 | 91 | 17.27 | 25.22 | 0.243 | 0 |
+| valkey-2shard | 3 | 247,307 [245,486–249,882] | 0.9% | 731 | 2,014 | 5,132 | 194 | 156 | 7.84 | 14.13 | 0.112 | 0 |
+| rvk-1t | 3 | 97,728 [92,162–105,616] | 6.9% | 1,880 | 3,973 | 6,550 | 99 | 85 | 10.05 | 18.77 | 0.284 | 0 |
+| rvk-2t ⚠client-bound | 3 | 249,648 [248,593–262,461] | 3.0% | 751 | 1,554 | 3,975 | 191 | 178 | 7.64 | 14.70 | 0.111 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.94×, valkey-2shard: 2.02×, rvk-1t: 0.80×, rvk-2t: 2.04×.
+
+valkey-1t Valkey-side cmds/s (INFO) 123,016; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 114,158; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 247,154; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 98,670; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 249,520; rvk-2t loopback bytes/op 161.9.
+
+#### read90, 1000 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 96,981 [93,458–98,398] | 2.6% | 10,633 | 20,349 | 35,029 | 98 | 72 | 10.17 | 17.55 | 0.286 | 0 |
+| valkey-io2 | 3 | 94,087 [90,704–97,058] | 3.4% | 10,363 | 16,425 | 25,494 | 198 | 80 | 21.11 | 29.64 | 0.295 | 0 |
+| valkey-2shard | 3 | 223,076 [202,925–247,151] | 9.9% | 4,252 | 9,552 | 14,811 | 197 | 163 | 8.82 | 16.14 | 0.125 | 0 |
+| rvk-1t | 3 | 96,349 [96,124–100,792] | 2.7% | 9,593 | 16,597 | 20,791 | 99 | 86 | 10.22 | 19.09 | 0.288 | 0 |
+| rvk-2t ⚠client-bound | 3 | 255,370 [240,567–261,758] | 4.3% | 3,750 | 7,287 | 11,084 | 190 | 183 | 7.47 | 14.63 | 0.109 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.97×, valkey-2shard: 2.30×, rvk-1t: 0.99×, rvk-2t: 2.63×.
+
+valkey-1t Valkey-side cmds/s (INFO) 96,839; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 94,677; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 222,791; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 96,380; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 255,380; rvk-2t loopback bytes/op 158.1.
+
+#### read90-p16, 200 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 669,507 [662,751–732,374] | 5.6% | 4,403 | 10,191 | 13,976 | 98 | 39 | 1.47 | 2.04 | 0.041 | 0 |
+| valkey-io2 | 3 | 921,979 [910,415–939,140] | 1.6% | 3,402 | 6,050 | 9,708 | 197 | 57 | 2.13 | 2.76 | 0.030 | 0 |
+| valkey-2shard | 3 | 1,391,984 [1,370,216–1,409,568] | 1.4% | 2,187 | 5,116 | 7,184 | 198 | 83 | 1.42 | 2.02 | 0.020 | 0 |
+| rvk-1t | 3 | 502,725 [477,712–539,800] | 6.2% | 6,058 | 8,970 | 13,304 | 99 | 42 | 1.97 | 2.81 | 0.055 | 0 |
+| rvk-2t | 3 | 1,007,562 [978,066–1,042,127] | 3.2% | 3,125 | 4,911 | 7,786 | 197 | 76 | 1.96 | 2.71 | 0.028 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.38×, valkey-2shard: 2.08×, rvk-1t: 0.75×, rvk-2t: 1.50×.
+
+valkey-1t Valkey-side cmds/s (INFO) 667,251; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 921,992; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 1,390,910; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 502,631; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 1,005,590; rvk-2t loopback bytes/op 144.5.
+
+## Open loop
+
+#### offered 20,000 ops/s, pacing spin
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t ⚠client-bound | 3 | 20,000 [20,000–20,000] | 0.0% | 32 | 228 | 2,490 | 27 | 198 | 13.35 | 112.50 | 1.389 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 20,000 [20,000–20,000] | 0.0% | 32 | 317 | 3,602 | 26 | 197 | 13.00 | 111.60 | 1.389 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 20,000 [20,000–20,000] | 0.0% | 39 | 674 | 4,260 | 32 | 197 | 16.05 | 114.60 | 1.389 | 0 |
+| rvk-1t ⚠client-bound | 3 | 20,000 [20,000–20,000] | 0.0% | 30 | 206 | 3,756 | 21 | 197 | 10.30 | 108.95 | 1.389 | 0 |
+| rvk-2t ⚠client-bound | 3 | 20,000 [20,000–20,000] | 0.0% | 34 | 360 | 2,656 | 24 | 197 | 12.05 | 110.35 | 1.389 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rvk-1t: 1.00×, rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 19,999; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 20,001; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 20,000; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 20,000; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 19,998; rvk-2t loopback bytes/op 144.5.
+
+#### offered 60,000 ops/s, pacing spin
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t ⚠client-bound | 3 | 60,000 [59,999–60,013] | 0.0% | 37 | 709 | 3,807 | 62 | 198 | 10.38 | 43.33 | 0.463 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 60,000 [59,999–60,010] | 0.0% | 35 | 1,965 | 11,239 | 163 | 197 | 27.23 | 60.25 | 0.463 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 60,000 [60,000–60,000] | 0.0% | 36 | 482 | 3,914 | 70 | 197 | 11.73 | 44.65 | 0.463 | 0 |
+| rvk-1t ⚠client-bound | 3 | 60,000 [60,000–60,000] | 0.0% | 30 | 3,697 | 24,003 | 48 | 197 | 7.95 | 40.73 | 0.463 | 0 |
+| rvk-2t ⚠client-bound | 3 | 60,000 [59,999–60,000] | 0.0% | 33 | 246 | 2,107 | 54 | 198 | 9.00 | 41.95 | 0.463 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rvk-1t: 1.00×, rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 60,003; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 60,001; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 60,001; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 60,004; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 60,006; rvk-2t loopback bytes/op 144.5.
+
+#### offered 100,000 ops/s, pacing spin
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t ⚠client-bound | 3 | 99,998 [99,998–99,999] | 0.0% | 50 | 779 | 3,043 | 85 | 198 | 8.48 | 28.24 | 0.278 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 100,000 [99,998–100,002] | 0.0% | 41 | 1,287 | 9,388 | 184 | 197 | 18.37 | 38.09 | 0.278 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 100,000 [99,999–100,000] | 0.0% | 38 | 504 | 3,428 | 106 | 198 | 10.63 | 30.29 | 0.278 | 0 |
+| rvk-1t ⚠client-bound | 3 | 100,000 [100,000–100,000] | 0.0% | 32 | 713 | 3,906 | 72 | 198 | 7.15 | 26.93 | 0.278 | 0 |
+| rvk-2t ⚠client-bound | 3 | 100,000 [99,999–100,002] | 0.0% | 36 | 516 | 3,328 | 84 | 198 | 8.44 | 28.24 | 0.278 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rvk-1t: 1.00×, rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 100,002; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 99,994; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 100,003; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 100,005; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 100,008; rvk-2t loopback bytes/op 167.8.
+
+#### offered 60,000 ops/s, pacing timer
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 60,000 [60,000–60,002] | 0.0% | 242 | 1,700 | 6,070 | 38 | 40 | 6.27 | 12.88 | 0.463 | 0 |
+| rvk-2t | 3 | 59,998 [59,997–60,001] | 0.0% | 122 | 1,185 | 5,329 | 38 | 42 | 6.37 | 13.52 | 0.463 | 0 |
+
+Throughput relative to valkey-1t (median/median): rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 59,996; valkey-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 59,998; rvk-2t loopback bytes/op 144.5.
+
+## Large values
+
+#### workload large-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 75,194 [74,280–75,478] | 0.8% | 623 | 1,453 | 3,088 | 99 | 73 | 13.11 | 22.87 | 0.369 | 0 |
+| valkey-io2 | 3 | 75,261 [74,876–79,255] | 3.2% | 629 | 1,264 | 3,930 | 197 | 77 | 26.10 | 36.31 | 0.369 | 0 |
+| valkey-2shard | 3 | 162,853 [156,044–167,093] | 3.4% | 289 | 643 | 2,138 | 197 | 137 | 12.10 | 20.53 | 0.171 | 0 |
+| rvk-1t | 3 | 69,672 [68,762–71,646] | 2.1% | 681 | 1,209 | 3,015 | 98 | 75 | 14.12 | 24.84 | 0.399 | 0 |
+| rvk-2t | 3 | 158,747 [153,074–161,274] | 2.7% | 295 | 629 | 2,519 | 194 | 147 | 12.20 | 21.23 | 0.175 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 2.17×, rvk-1t: 0.93×, rvk-2t: 2.11×.
+
+valkey-1t Valkey-side cmds/s (INFO) 75,233; valkey-1t loopback bytes/op 16,430.5; valkey-io2 Valkey-side cmds/s (INFO) 75,597; valkey-io2 loopback bytes/op 16,430.5; valkey-2shard Valkey-side cmds/s (INFO) 162,425; valkey-2shard loopback bytes/op 16,430.5; rvk-1t Valkey-side cmds/s (INFO) 69,692; rvk-1t loopback bytes/op 16,430.5; rvk-2t Valkey-side cmds/s (INFO) 158,340; rvk-2t loopback bytes/op 16,647.2.
+
+## TTL
+
+#### workload ttl-mixed50
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 109,400 [108,295–110,991] | 1.2% | 397 | 1,230 | 5,435 | 98 | 79 | 9.00 | 16.11 | 0.254 | 0 |
+| valkey-io2 | 3 | 95,637 [95,205–97,436] | 1.2% | 475 | 1,464 | 6,029 | 197 | 75 | 20.60 | 28.41 | 0.290 | 0 |
+| valkey-2shard | 3 | 215,084 [214,323–219,526] | 1.3% | 206 | 569 | 2,857 | 195 | 142 | 9.05 | 15.68 | 0.129 | 0 |
+| rvk-1t | 3 | 103,156 [102,674–105,669] | 1.5% | 452 | 1,179 | 4,176 | 98 | 83 | 9.54 | 17.53 | 0.269 | 0 |
+| rvk-2t | 3 | 272,306 [270,347–272,379] | 0.4% | 156 | 463 | 4,198 | 188 | 169 | 6.94 | 13.18 | 0.102 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.87×, valkey-2shard: 1.97×, rvk-1t: 0.94×, rvk-2t: 2.49×.
+
+valkey-1t hit rate 0.240; valkey-1t expired_keys/run 680,348; valkey-1t Valkey-side cmds/s (INFO) 109,258; valkey-1t loopback bytes/op 113.6; valkey-io2 hit rate 0.212; valkey-io2 expired_keys/run 604,989; valkey-io2 Valkey-side cmds/s (INFO) 95,232; valkey-io2 loopback bytes/op 112.3; valkey-2shard hit rate 0.421; valkey-2shard expired_keys/run 970,011; valkey-2shard Valkey-side cmds/s (INFO) 215,571; valkey-2shard loopback bytes/op 122.0; rvk-1t hit rate 0.226; rvk-1t expired_keys/run 710,337; rvk-1t Valkey-side cmds/s (INFO) 103,114; rvk-1t loopback bytes/op 112.9; rvk-2t hit rate 0.493; rvk-2t expired_keys/run 1,257,560; rvk-2t Valkey-side cmds/s (INFO) 272,218; rvk-2t loopback bytes/op 125.5.
+
+## Cold cache
+
+#### workload cold-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 122,672 [115,045–123,946] | 4.0% | 362 | 974 | 2,521 | 98 | 88 | 7.99 | 15.22 | 0.226 | 0 |
+| valkey-io2 | 3 | 106,934 [100,058–106,953] | 3.8% | 446 | 992 | 3,320 | 197 | 81 | 18.42 | 26.17 | 0.260 | 0 |
+| valkey-2shard | 3 | 246,557 [245,240–254,762] | 2.1% | 183 | 466 | 1,774 | 193 | 160 | 7.87 | 14.13 | 0.113 | 0 |
+| rvk-1t | 3 | 110,218 [109,069–114,488] | 2.6% | 430 | 840 | 2,753 | 98 | 96 | 8.89 | 17.48 | 0.252 | 0 |
+| rvk-2t ⚠client-bound | 3 | 269,311 [257,935–274,396] | 3.2% | 162 | 423 | 2,048 | 178 | 182 | 6.51 | 13.30 | 0.103 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.87×, valkey-2shard: 2.01×, rvk-1t: 0.90×, rvk-2t: 2.20×.
+
+valkey-1t hit rate 0.119; valkey-1t Valkey-side cmds/s (INFO) 122,707; valkey-1t loopback bytes/op 61.3; valkey-io2 hit rate 0.105; valkey-io2 Valkey-side cmds/s (INFO) 107,115; valkey-io2 loopback bytes/op 60.1; valkey-2shard hit rate 0.227; valkey-2shard Valkey-side cmds/s (INFO) 246,632; valkey-2shard loopback bytes/op 69.7; rvk-1t hit rate 0.110; rvk-1t Valkey-side cmds/s (INFO) 110,173; rvk-1t loopback bytes/op 60.5; rvk-2t hit rate 0.239; rvk-2t Valkey-side cmds/s (INFO) 270,138; rvk-2t loopback bytes/op 70.9.
+
+## Eviction
+
+#### workload evict-uniform
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 103,942 [102,224–106,206] | 1.9% | 430 | 1,159 | 2,955 | 98 | 78 | 9.43 | 16.95 | 0.267 | 0 |
+| rvk-1t | 3 | 93,740 [84,133–94,264] | 6.3% | 504 | 972 | 2,773 | 98 | 76 | 10.46 | 18.99 | 0.296 | 0 |
+| rvk-2t | 3 | 230,379 [226,354–233,010] | 1.5% | 199 | 497 | 2,253 | 192 | 156 | 8.35 | 15.25 | 0.121 | 0 |
+
+Throughput relative to valkey-1t (median/median): rvk-1t: 0.90×, rvk-2t: 2.22×.
+
+valkey-1t hit rate 0.323; valkey-1t evicted_keys/run 636,246; valkey-1t Valkey-side cmds/s (INFO) 103,796; valkey-1t loopback bytes/op 111.7; rvk-1t hit rate 0.279; rvk-1t evicted_keys/run 616,114; rvk-1t Valkey-side cmds/s (INFO) 93,360; rvk-1t loopback bytes/op 109.4; rvk-2t hit rate 0.279; rvk-2t evicted_keys/run 1,463,662; rvk-2t Valkey-side cmds/s (INFO) 231,667; rvk-2t loopback bytes/op 109.4.
+
+#### workload evict-skew
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 105,541 [103,987–107,157] | 1.5% | 432 | 1,113 | 3,242 | 98 | 87 | 9.27 | 17.51 | 0.263 | 0 |
+| rvk-1t | 3 | 99,773 [97,695–99,911] | 1.3% | 478 | 869 | 2,802 | 98 | 89 | 9.88 | 18.86 | 0.278 | 0 |
+| rvk-2t ⚠client-bound | 3 | 249,160 [217,724–256,916] | 8.6% | 184 | 463 | 1,811 | 184 | 182 | 7.37 | 14.52 | 0.111 | 0 |
+
+Throughput relative to valkey-1t (median/median): rvk-1t: 0.95×, rvk-2t: 2.36×.
+
+valkey-1t hit rate 0.730; valkey-1t evicted_keys/run 282,809; valkey-1t Valkey-side cmds/s (INFO) 105,297; valkey-1t loopback bytes/op 131.4; rvk-1t hit rate 0.719; rvk-1t evicted_keys/run 281,447; rvk-1t Valkey-side cmds/s (INFO) 99,565; rvk-1t loopback bytes/op 130.9; rvk-2t hit rate 0.775; rvk-2t evicted_keys/run -1,260,502; rvk-2t Valkey-side cmds/s (INFO) 249,609; rvk-2t loopback bytes/op 304.7.
+
+## Connection churn
+
+#### workload get100-churn
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 14,138 [14,122–14,143] | 0.1% | 1,207 | 21,903 | 45,951 | 53 | 97 | 37.55 | 105.92 | 1.965 | 0 |
+| valkey-io2 | 3 | 13,971 [13,934–14,208] | 1.1% | 1,055 | 24,879 | 51,135 | 149 | 96 | 106.01 | 174.48 | 1.988 | 0 |
+| rvk-1t | 3 | 14,146 [14,118–14,164] | 0.2% | 1,231 | 16,879 | 39,487 | 45 | 98 | 32.02 | 101.01 | 1.964 | 0 |
+| rvk-2t | 3 | 13,951 [13,862–13,963] | 0.4% | 1,511 | 5,623 | 14,119 | 57 | 98 | 40.71 | 110.81 | 1.991 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.99×, rvk-1t: 1.00×, rvk-2t: 0.99×.
+
+valkey-1t Valkey-side cmds/s (INFO) 14,228; valkey-io2 Valkey-side cmds/s (INFO) 14,027; rvk-1t Valkey-side cmds/s (INFO) 14,157; rvk-2t Valkey-side cmds/s (INFO) 13,942.
+
+## Candidate C clients
+
+#### workload rs-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 117,740 [117,682–129,308] | 5.5% | 399 | 848 | 1,868 | 98 | 153 | 8.26 | 20.95 | 0.236 | 0 |
+| valkey-io2 | 3 | 131,393 [126,784–131,394] | 2.0% | 362 | 811 | 2,900 | 197 | 161 | 14.97 | 27.32 | 0.211 | 0 |
+| rvk-2t ⚠client-bound | 3 | 130,045 [123,119–131,014] | 3.4% | 371 | 819 | 3,047 | 104 | 192 | 8.33 | 23.14 | 0.214 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.12×, rvk-2t: 1.10×.
+
+valkey-1t Valkey-side cmds/s (INFO) 117,279; valkey-io2 Valkey-side cmds/s (INFO) 130,505; rvk-2t Valkey-side cmds/s (INFO) 129,030.
+
+#### workload rs-read90-mux1
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 200,356 [198,916–202,005] | 0.8% | 237 | 455 | 1,442 | 38 | 114 | 1.89 | 7.53 | 0.139 | 0 |
+| valkey-io2 | 3 | 183,174 [179,661–183,723] | 1.2% | 264 | 549 | 2,056 | 142 | 110 | 7.75 | 13.68 | 0.152 | 0 |
+| rvk-2t | 3 | 191,582 [185,004–206,358] | 5.6% | 247 | 512 | 1,638 | 35 | 113 | 1.84 | 7.73 | 0.145 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.91×, rvk-2t: 0.96×.
+
+valkey-1t Valkey-side cmds/s (INFO) 198,496; valkey-io2 Valkey-side cmds/s (INFO) 181,581; rvk-2t Valkey-side cmds/s (INFO) 190,772.
+
+#### workload rs-skew-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 144,082 [144,003–145,768] | 0.7% | 326 | 741 | 1,802 | 97 | 170 | 6.74 | 18.47 | 0.193 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 134,845 [132,861–143,240] | 4.0% | 338 | 684 | 2,261 | 196 | 171 | 14.61 | 27.43 | 0.206 | 0 |
+| rvk-2t ⚠client-bound | 3 | 121,472 [119,266–127,665] | 3.5% | 395 | 831 | 2,114 | 98 | 192 | 8.06 | 23.90 | 0.229 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.94×, rvk-2t: 0.84×.
+
+valkey-1t Valkey-side cmds/s (INFO) 143,825; valkey-io2 Valkey-side cmds/s (INFO) 134,522; rvk-2t Valkey-side cmds/s (INFO) 121,362.
+
+#### workload rs-skew-read90-mux1
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 202,976 [193,274–209,182] | 4.0% | 234 | 465 | 1,884 | 34 | 122 | 1.69 | 7.69 | 0.137 | 0 |
+| valkey-io2 | 3 | 194,469 [178,557–194,475] | 4.9% | 239 | 598 | 2,507 | 136 | 115 | 7.19 | 12.93 | 0.143 | 0 |
+| rvk-2t | 3 | 198,708 [197,880–210,616] | 3.5% | 234 | 504 | 1,393 | 29 | 124 | 1.45 | 7.71 | 0.140 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.96×, rvk-2t: 0.98×.
+
+valkey-1t Valkey-side cmds/s (INFO) 203,574; valkey-io2 Valkey-side cmds/s (INFO) 193,532; rvk-2t Valkey-side cmds/s (INFO) 197,052.
+
+#### workload rs-skew-read90-mux1-cache
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 230,532 [191,377–254,003] | 14.0% | 2 | 1,106 | 2,474 | 43 | 133 | 1.85 | 7.63 | 0.120 | 0 |
+| valkey-io2 | 3 | 243,410 [221,878–243,569] | 5.3% | 2 | 1,106 | 3,523 | 145 | 130 | 6.00 | 11.38 | 0.114 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.06×.
+
+valkey-1t Valkey-side cmds/s (INFO) 134,642; valkey-io2 Valkey-side cmds/s (INFO) 140,182.
+
+## Overload (open loop above capacity; added after pre-registration)
+
+#### offered 150,000 ops/s
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t ⚠client-bound | 3 | 149,997 [149,976–149,998] | 0.0% | 228 | 2,488 | 21,725 | 98 | 198 | 6.51 | 19.66 | 0.185 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 149,998 [149,998–150,000] | 0.0% | 212 | 14,672 | 35,422 | 191 | 196 | 12.74 | 25.84 | 0.185 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 149,999 [149,999–149,999] | 0.0% | 42 | 4,592 | 24,232 | 134 | 197 | 8.95 | 22.06 | 0.185 | 0 |
+| rvk-1t ⚠client-bound | 3 | 149,997 [149,613–149,999] | 0.1% | 48 | 1,057 | 4,235 | 91 | 197 | 6.07 | 19.23 | 0.185 | 0 |
+| rvk-2t ⚠client-bound | 3 | 149,998 [149,998–149,999] | 0.0% | 42 | 1,570 | 5,411 | 114 | 196 | 7.61 | 20.71 | 0.185 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rvk-1t: 1.00×, rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 150,002; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 149,974; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 149,997; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 149,998; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 150,005; rvk-2t loopback bytes/op 177.3.
+
+#### offered 300,000 ops/s
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t ⚠client-bound | 3 | 299,996 [299,994–299,999] | 0.0% | 620 | 6,042 | 25,510 | 98 | 196 | 3.28 | 9.81 | 0.093 | 0 |
+| valkey-io2 ⚠client-bound | 3 | 300,002 [300,002–300,012] | 0.0% | 473 | 11,362 | 45,613 | 194 | 197 | 6.48 | 13.03 | 0.093 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 299,999 [299,997–300,002] | 0.0% | 155 | 3,715 | 30,966 | 192 | 197 | 6.41 | 12.96 | 0.093 | 0 |
+| rvk-1t ⚠client-bound | 3 | 299,999 [299,998–300,002] | 0.0% | 335 | 3,039 | 31,867 | 98 | 197 | 3.28 | 9.86 | 0.093 | 0 |
+| rvk-2t ⚠client-bound | 3 | 299,996 [299,936–300,032] | 0.0% | 68 | 4,102 | 30,441 | 172 | 197 | 5.75 | 12.32 | 0.093 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rvk-1t: 1.00×, rvk-2t: 1.00×.
+
+valkey-1t Valkey-side cmds/s (INFO) 299,986; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 299,951; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 299,999; valkey-2shard loopback bytes/op 144.5; rvk-1t Valkey-side cmds/s (INFO) 300,000; rvk-1t loopback bytes/op 144.5; rvk-2t Valkey-side cmds/s (INFO) 299,972; rvk-2t loopback bytes/op 144.5.
+
+## Valkey with AOF (added after pre-registration)
+
+#### workload read90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 117,880 [116,149–119,348] | 1.4% | 388 | 984 | 3,234 | 99 | 80 | 8.36 | 15.22 | 0.236 | 0 |
+| valkey-2shard | 3 | 236,981 [223,405–239,823] | 3.8% | 186 | 550 | 2,613 | 192 | 143 | 8.10 | 14.29 | 0.117 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-2shard: 2.01×.
+
+valkey-1t Valkey-side cmds/s (INFO) 118,504; valkey-1t loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 236,475; valkey-2shard loopback bytes/op 144.5.
+
+#### workload write90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 76,137 [73,627–81,643] | 5.3% | 430 | 4,936 | 7,287 | 74 | 55 | 9.64 | 16.34 | 0.365 | 0 |
+| valkey-2shard | 3 | 174,566 [172,780–178,386] | 1.6% | 209 | 4,243 | 5,181 | 164 | 109 | 9.36 | 15.67 | 0.159 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-2shard: 2.29×.
+
+valkey-1t Valkey-side cmds/s (INFO) 74,973; valkey-1t loopback bytes/op 148.5; valkey-2shard Valkey-side cmds/s (INFO) 175,333; valkey-2shard loopback bytes/op 148.5.
 
 ## Cross-check
 

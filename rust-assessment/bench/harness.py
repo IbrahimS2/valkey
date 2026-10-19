@@ -370,6 +370,12 @@ SUITES.update({
     # capacity of the single-core topologies, and what persistence costs Valkey on the Part II host.
     "p2-overload": [dict(s, pacing="spin") for s in suite(P2_TOPOS, ["read90"], rates=(150_000, 300_000))],
     "p2-aof": suite(["valkey-1t", "valkey-2shard"], ["read90-aof", "write90-aof"]),
+    # Round 2 (post hoc, after the review fixes and profile-guided changes to rvk-server): the Gate 3
+    # points again, every baseline re-run alongside so the comparison stays within one time window.
+    "p2-r2-core": suite(P2_TOPOS, CORE),
+    "p2-r2-core-p16": suite(P2_TOPOS, [w + "-p16" for w in CORE]),
+    "p2-r2-conns": suite(P2_TOPOS, ["read90", "read90-p16"], conns=(200,)),
+    "p2-r2-openloop": [dict(s, pacing="spin") for s in suite(P2_TOPOS, ["read90"], rates=(20_000, 60_000, 100_000))],
     "p2-clients": suite(["valkey-1t", "valkey-io2", "rvk-2t"],
                         ["rs-read90", "rs-read90-mux1", "rs-skew-read90", "rs-skew-read90-mux1"], tool="rsclient")
                   + suite(["valkey-1t", "valkey-io2"], ["rs-skew-read90-mux1-cache"], tool="rsclient"),
@@ -552,11 +558,20 @@ def raw_dir(suite_name):
     return os.path.join(RESULTS, "raw2" if suite_name.startswith("p2-") else "raw")
 
 
+def spec_key(spec):
+    return tuple(spec.get(k) for k in ("topo", "workload", "conns", "rate", "trial", "tool", "pacing"))
+
+
 def cmd_run(args):
     for name in args.suites:
         specs = SUITES[name]
         os.makedirs(raw_dir(name), exist_ok=True)
         path = os.path.join(raw_dir(name), f"{name}.jsonl")
+        if args.resume and os.path.exists(path):
+            # Skip runs already recorded without error (for example after the host restarted mid-suite).
+            with open(path) as f:
+                done = {spec_key(r) for r in map(json.loads, filter(str.strip, f)) if "error" not in r}
+            specs = [s for s in specs if spec_key({**s, "tool": s.get("tool", "loadgen")}) not in done]
         print(f"== suite {name}: {len(specs)} runs -> {path}", flush=True)
         with open(path, "a") as out:
             for i, spec in enumerate(specs, 1):
@@ -618,7 +633,8 @@ def cmd_env(args):
     }
     os.makedirs(RESULTS, exist_ok=True)
     # Part I's environment.json records the binaries its raw data came from; Part II gets its own file.
-    name = "environment_part2.json" if args.part2 else "environment.json"
+    name = (f"environment_part2_{args.tag}.json" if args.tag else "environment_part2.json") if args.part2 \
+        else "environment.json"
     with open(os.path.join(RESULTS, name), "w") as f:
         json.dump(env, f, indent=2)
     print(json.dumps({k: v for k, v in env.items() if k != "lscpu"}, indent=2))
@@ -629,9 +645,11 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("suites", nargs="+", choices=sorted(SUITES))
+    r.add_argument("--resume", action="store_true", help="skip runs already recorded in the suite's raw file")
     sub.add_parser("crosscheck")
     e = sub.add_parser("env")
     e.add_argument("--part2", action="store_true")
+    e.add_argument("--tag", default="", help="Part II round label, e.g. r2 (environment_part2_r2.json)")
     sub.add_parser("list")
     args = ap.parse_args()
     if args.cmd == "run":

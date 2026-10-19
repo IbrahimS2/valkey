@@ -80,14 +80,14 @@ def throughput_table(out, title, recs, workloads, conns=50, note=""):
     return rows
 
 
-def gate3(out, core, core16, conns):
+def gate3(out, core, core16, conns, title="### P-G. Gate 3 evaluation (pre-registered, BENCHMARK_PLAN.md Part II §II.3)"):
     """Pre-registered Gate 3: five points, client-bound comparisons decided on -p16."""
     pts = []
     for wl in CORE:
         pts.append((f"{wl} c=50", {t: core.get((wl, t)) for t in TOPOS}, {t: core16.get((wl + "-p16", t)) for t in TOPOS}))
     pts.append(("read90 c=200", {t: conns.get(("read90", 200, t)) for t in TOPOS},
                 {t: conns.get(("read90-p16", 200, t)) for t in TOPOS}))
-    out += ["### P-G. Gate 3 evaluation (pre-registered, BENCHMARK_PLAN.md Part II §II.3)", "",
+    out += [title, "",
             "Each point uses the unpipelined run unless the load generator was above 170% CPU in a trial of a "
             "topology being compared, in which case the depth-16 pipelined run decides (as pre-registered). "
             "CPU/op columns compare `rvk-2t` with the best Valkey 2-CPU option (lowest CPU/op of `valkey-io2` "
@@ -116,8 +116,8 @@ def gate3(out, core, core16, conns):
     return tally
 
 
-def openloop_table(out, recs):
-    out += ["### P-O. Latency at a fixed offered load (open loop, read90, 50 connections)", "",
+def openloop_table(out, recs, title="### P-O. Latency at a fixed offered load (open loop, read90, 50 connections)"):
+    out += [title, "",
             "Precise pacing (`--spin-pacing`). Each cell: p50 / p99 / p99.9 µs measured from the actual send time, "
             "then the same from the intended send time (includes load-generator lag), then server CPU µs/op.", "",
             "| offered ops/s | " + " | ".join(TOPOS) + " |", "|---|" + "---|" * len(TOPOS)]
@@ -463,7 +463,24 @@ def main():
     cpu_split(key)
     cost_table(key, core, vh)
     recovery2(key)
-    lines, failed = validity(SUITES)
+    # Round 2 (post hoc): the same points after the review fixes and optimizations.
+    r2_core, r2_core16, r2_conns = load("p2-r2-core"), load("p2-r2-core-p16"), load("p2-r2-conns")
+    if r2_core:
+        c2 = {(wl, t): stats(r2_core, vh, topo=t, workload=wl) for wl in CORE for t in TOPOS}
+        c216 = {(wl + "-p16", t): stats(r2_core16, vh, topo=t, workload=wl + "-p16") for wl in CORE for t in TOPOS}
+        cn2 = {(wl, c, t): stats(r2_conns, vh, topo=t, workload=wl, conns=c)
+               for wl in ("read90", "read90-p16") for c in (200,) for t in TOPOS}
+        throughput_table(key, "### P-R1. Round 2 (post hoc): saturation throughput, 50 connections, unpipelined",
+                         r2_core, CORE)
+        throughput_table(key, "### P-R2. Round 2 (post hoc): pipeline depth 16", r2_core16, [w + "-p16" for w in CORE])
+        throughput_table(key, "### P-R3. Round 2 (post hoc): 200 connections", r2_conns, ["read90", "read90-p16"],
+                         conns=200)
+        gate3(key, c2, c216, cn2, title="### P-RG. Round 2 (post hoc): Gate 3 rules applied to the re-measured points")
+        r2_ol = load("p2-r2-openloop")
+        if r2_ol:
+            openloop_table(key, r2_ol, title="### P-RO. Round 2 (post hoc): latency at a fixed offered load")
+        cost_table(key, c2, vh)
+    lines, failed = validity(SUITES + ["p2-r2-core", "p2-r2-core-p16", "p2-r2-conns", "p2-r2-openloop"])
     key += ["### P-V. Validity checks", ""] + lines + ["", "Failed runs: " + ("none." if not failed else "")]
     key += [f"- {f}" for f in failed]
 

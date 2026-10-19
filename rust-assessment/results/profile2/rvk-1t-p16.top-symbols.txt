@@ -1,0 +1,40 @@
+    28.49%  rvk-server         [.] _RNvMs1_NtCshW45RROdNQH_10rvk_server5storeNtB5_5Shard6lookup
+    23.63%  [kernel.kallsyms]  [k] _raw_spin_unlock_irqrestore
+    12.74%  libc.so.6          [.] __memcmp_evex_movbe
+     4.64%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server6server7process
+     1.66%  libc.so.6          [.] __memmove_avx512_unaligned_erms
+               0x1
+     1.52%  rvk-server         [.] _RINvNtCscI6d9CVNmLh_4core3ptr9drop_glueNtNtCshW45RROdNQH_10rvk_server3cmd5LocksEBF_
+               0x1
+     1.39%  [vdso]             [.] 0x0000000000000896
+                                     0x1
+     1.11%  [kernel.kallsyms]  [k] tcp_sendmsg_locked
+     1.00%  [kernel.kallsyms]  [k] tcp_rcv_established
+     0.65%  [kernel.kallsyms]  [k] skb_defer_free_flush
+     0.60%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server3cmd6lookup
+     0.57%  [kernel.kallsyms]  [k] do_syscall_64
+     0.54%  [kernel.kallsyms]  [k] skb_release_data
+     0.54%  [kernel.kallsyms]  [k] _copy_to_iter
+     0.51%  [kernel.kallsyms]  [k] __inet_lookup_established
+     0.50%  libc.so.6          [.] __send
+     0.49%  rvk-server         [.] _RNvMs0_NtCshW45RROdNQH_10rvk_server3cmdNtB5_2Cx4find
+     0.43%  [kernel.kallsyms]  [k] tcp_clean_rtx_queue
+     0.39%  [kernel.kallsyms]  [k] __alloc_skb
+     0.37%  [kernel.kallsyms]  [k] sock_def_readable
+     0.36%  [kernel.kallsyms]  [k] _raw_spin_unlock_irq
+     0.35%  [kernel.kallsyms]  [k] tcp_v4_do_rcv
+     0.34%  [kernel.kallsyms]  [k] read_tsc
+     0.34%  [kernel.kallsyms]  [k] tcp_recvmsg_locked
+     0.31%  [kernel.kallsyms]  [k] __dev_queue_xmit
+     0.31%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server3cmd10key_shards
+     0.31%  [kernel.kallsyms]  [k] tcp_data_ready
+     0.30%  [kernel.kallsyms]  [k] tcp_v4_rcv
+     0.29%  [kernel.kallsyms]  [k] __skb_datagram_iter
+     0.29%  [kernel.kallsyms]  [k] ip_finish_output2
+     0.29%  rvk-server         [.] _RNvMNtNtNtNtCsgczF5crJ4sT_3std3sys3pal4unix4timeNtB2_8Timespec12sub_timespec.llvm.2564870832852997069
+     0.28%  [kernel.kallsyms]  [k] __rcu_read_unlock
+     0.27%  rvk-server         [.] _RINvNtNtCsgczF5crJ4sT_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNvNtCshW45RROdNQH_10rvk_server6server3runs2_00INtNtCscI6d9CVNmLh_4core6result6ResultuNtNtNtB6_2io5error5ErrorEEB1f_
+     0.27%  [kernel.kallsyms]  [k] __raw_callee_save___pv_queued_spin_unlock
+     0.26%  [kernel.kallsyms]  [k] fdget
+     0.26%  [kernel.kallsyms]  [k] tcp_rcv_space_adjust
+     0.26%  rvk-server         [.] _RNvNtCshW45RROdNQH_10rvk_server4resp8push_i64
