@@ -14,6 +14,7 @@ lock-sharded multi-threaded server must guarantee by locking:
   expiry_race     GET/SET with 1 ms TTLs and active expiry: no protocol errors,
                   replies are always a full value or nil
   memory_bound    writes under maxmemory + allkeys-lru keep used_memory bounded
+                  and are never refused with OOM, for 1000- and 100-byte values
                   (skipped unless the server reports maxmemory > 0)
 Exit status 0 if every invariant held.
 """
@@ -207,14 +208,26 @@ def info_field(c, field):
 
 
 def t_memory_bound(port, scale):
+    # Large values reach the limit with few keys; small values make many more
+    # concurrent evictions per second, which exposed a check-then-act race.
+    results = [memory_bound_once(port, scale, size) for size in (1000, 100)]
+    out = {"ok": all(r["ok"] for r in results)}
+    for r in results:
+        out["v%d" % r["value_size"]] = {k: v for k, v in r.items() if k not in ("ok", "value_size")}
+    return out
+
+
+def memory_bound_once(port, scale, size):
     c = Conn(port)
     maxmem = info_field(c, "maxmemory")
     if maxmem == 0:
-        return {"ok": True, "skipped": "server has no maxmemory"}
-    val = b"x" * 1000
+        return {"ok": True, "value_size": size, "skipped": "server has no maxmemory"}
+    c.cmd("flushall")
+    c.cmd("config", "resetstat")
+    val = b"x" * size
     peak = [0]
-    # Write about twice maxmemory so eviction must run.
-    per = max(2000, int(2 * maxmem / 1000 / 8)) * scale
+    # Write about twice maxmemory (counting ~100 bytes of per-key overhead) so eviction must run.
+    per = max(2000, int(2 * maxmem / (size + 100) / 8)) * scale
 
     def work(i):
         k = Conn(port)
@@ -256,8 +269,8 @@ def t_memory_bound(port, scale):
         if line.startswith("evicted_keys:"):
             evicted = int(line.split(":")[1])
     ok = not errors and peak[0] <= maxmem * 1.25 and final <= maxmem * 1.10 and evicted > 0
-    return {"ok": ok, "maxmemory": maxmem, "peak_used": peak[0], "final_used": final, "evicted_keys": evicted,
-            "errors": errors[:3], "error_count": len(errors)}
+    return {"ok": ok, "value_size": size, "maxmemory": maxmem, "peak_used": peak[0], "final_used": final,
+            "evicted_keys": evicted, "errors": errors[:3], "error_count": len(errors)}
 
 
 TESTS = [t_incr_atomic, t_mset_atomic, t_exec_isolation, t_watch_cas, t_expiry_race, t_memory_bound]

@@ -35,6 +35,9 @@ RUST_BIN = os.path.join(HERE, "rust", "target", "release")
 LOADGEN = os.path.join(RUST_BIN, "loadgen")
 PROXY = os.path.join(RUST_BIN, "proxy-poc")
 MAPMEM = os.path.join(RUST_BIN, "mapmem")
+POC_BIN = os.path.join(HERE, "..", "poc", "target", "release")
+RVK = os.path.join(POC_BIN, "rvk-server")
+RSCLIENT = os.path.join(POC_BIN, "rsclient")
 RESULTS = os.path.join(HERE, "..", "results")
 
 # CPU layout for a 4-vCPU host: the data-service side (Valkey and, when
@@ -97,6 +100,8 @@ def wait_ping(port, timeout=30.0):
 
 
 class Valkey:
+    kind = "valkey"
+
     def __init__(self, port, cpus, workdir, args):
         self.port = port
         self.log = os.path.join(workdir, f"valkey-{port}.log")
@@ -121,6 +126,20 @@ class Valkey:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 self.proc.wait()
+
+
+class Rvk(Valkey):
+    """rvk-server (Candidate A). It accepts the flags the harness passes to valkey-server and stops on SHUTDOWN."""
+    kind = "rvk"
+
+    def __init__(self, port, cpus, threads, workdir, args):
+        self.port = port
+        self.log = os.path.join(workdir, f"rvk-{port}.log")
+        with open(self.log, "w") as logf:
+            cmd = ["taskset", "-c", cpus, RVK, "--port", str(port), "--bind", "127.0.0.1",
+                   "--threads", str(threads), "--maxclients", "10000", *map(str, args)]
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf)
+        wait_ping(port)
 
 
 class Proxy:
@@ -176,7 +195,7 @@ class Topology:
         return [self.proxy.port] if self.proxy else self.data_ports
 
     def processes(self):
-        out = {f"valkey-{v.port}": v.pid for v in self.valkeys}
+        out = {f"{v.kind}-{v.port}": v.pid for v in self.valkeys}
         if self.proxy:
             out["proxy"] = self.proxy.pid
         return out
@@ -225,7 +244,24 @@ class RustProxy(Topology):
                            workdir=self.workdir)
 
 
-TOPOLOGIES = {t.name: t for t in (ValkeySingleThread, ValkeyIOThreads, ValkeyTwoShards, RustProxy)}
+class RvkSingleThread(Topology):
+    name = "rvk-1t"
+    description = "rvk-server, 1 worker thread, pinned to CPU 0; CPU 1 idle"
+
+    def start(self):
+        self.valkeys = [Rvk(BASE_PORT, SERVER_CPUS[0], 1, self.workdir, self.valkey_args)]
+
+
+class RvkTwoThreads(Topology):
+    name = "rvk-2t"
+    description = "rvk-server, 2 worker threads (lock-sharded keyspace), on CPUs 0-1"
+
+    def start(self):
+        self.valkeys = [Rvk(BASE_PORT, ",".join(SERVER_CPUS), 2, self.workdir, self.valkey_args)]
+
+
+TOPOLOGIES = {t.name: t for t in (ValkeySingleThread, ValkeyIOThreads, ValkeyTwoShards, RustProxy,
+                                  RvkSingleThread, RvkTwoThreads)}
 
 
 # --------------------------------------------------------------------------
@@ -233,10 +269,15 @@ TOPOLOGIES = {t.name: t for t in (ValkeySingleThread, ValkeyIOThreads, ValkeyTwo
 # --------------------------------------------------------------------------
 
 def workload(name, get_ratio, value_size=100, keyspace=1_000_000, zipf=0.0, ttl=0,
-             pipeline=1, preload=True, valkey_args=(), evicting=False, keepalive=True):
-    return dict(name=name, get_ratio=get_ratio, value_size=value_size, keyspace=keyspace,
-                zipf=zipf, ttl=ttl, pipeline=pipeline, preload=preload,
-                valkey_args=list(valkey_args), evicting=evicting, keepalive=keepalive)
+             pipeline=1, preload=True, valkey_args=(), evicting=False, keepalive=True, mux=0, cache=0):
+    """mux and cache apply to rsclient only: logical clients share `mux` sockets (0 = one each) and a
+    client-side cache of `cache` entries (0 = none)."""
+    wl = dict(name=name, get_ratio=get_ratio, value_size=value_size, keyspace=keyspace,
+              zipf=zipf, ttl=ttl, pipeline=pipeline, preload=preload,
+              valkey_args=list(valkey_args), evicting=evicting, keepalive=keepalive)
+    if mux or cache:
+        wl.update(mux=mux, cache=cache)
+    return wl
 
 
 W = {
@@ -262,9 +303,22 @@ W = {
     "evict-skew": workload("evict-skew", 0.5, keyspace=5_000_000, zipf=0.99, evicting=True,
                            valkey_args=["--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]),
     "cold-read90": workload("cold-read90", 0.9, preload=False),
+    # Part II
+    "mixed50-p16": workload("mixed50-p16", 0.5, pipeline=16),
+    "write90-p16": workload("write90-p16", 0.1, pipeline=16),
+    "skew-read90-p16": workload("skew-read90-p16", 0.9, zipf=0.99, pipeline=16),
+    # rsclient (redis-rs): one socket per logical client, all multiplexed on one socket, and that plus a
+    # client-side cache sized at 10% of the keyspace.
+    "rs-read90": workload("rs-read90", 0.9),
+    "rs-read90-mux1": workload("rs-read90-mux1", 0.9, mux=1),
+    "rs-skew-read90": workload("rs-skew-read90", 0.9, zipf=0.99),
+    "rs-skew-read90-mux1": workload("rs-skew-read90-mux1", 0.9, zipf=0.99, mux=1),
+    "rs-skew-read90-mux1-cache": workload("rs-skew-read90-mux1-cache", 0.9, zipf=0.99, mux=1, cache=100_000),
 }
 
 ALL_TOPOS = ["valkey-1t", "valkey-io2", "valkey-2shard", "rust-proxy"]
+P2_TOPOS = ["valkey-1t", "valkey-io2", "valkey-2shard", "rvk-1t", "rvk-2t"]
+P2_ONE_ENDPOINT = ["valkey-1t", "valkey-io2", "rvk-1t", "rvk-2t"]
 
 
 def suite(topos, workloads, conns=(50,), rates=(0,), trials=3, duration=15, warmup=3, tool="loadgen"):
@@ -290,6 +344,32 @@ SUITES = {
     # valkey-benchmark drives one endpoint, so the two-shard topology is not run here.
     "churn": suite(["valkey-1t", "valkey-io2", "rust-proxy"], ["get100-churn"], tool="valkey-benchmark"),
 }
+
+# Part II (BENCHMARK_PLAN.md, Part II). Results go to results/raw2 so Part I raw data stays untouched.
+CORE = ["read90", "mixed50", "write90", "skew-read90"]
+SUITES.update({
+    "p2-smoke": suite(P2_TOPOS + ["rust-proxy"], ["read90"], trials=1, duration=4, warmup=1)
+                + suite(["valkey-1t", "rvk-2t"], ["rs-read90-mux1"], trials=1, duration=4, warmup=1, tool="rsclient"),
+    "p2-core": suite(P2_TOPOS, CORE),
+    "p2-core-p16": suite(P2_TOPOS, [w + "-p16" for w in CORE]),
+    "p2-proxy": suite(["rust-proxy"], ["read90"]),
+    "p2-conns": suite([t for t in P2_TOPOS if t != "valkey-2shard"], ["read90"], conns=(1,))
+                + suite(P2_TOPOS, ["read90"], conns=(10, 200, 1000))
+                + suite(P2_TOPOS, ["read90-p16"], conns=(200,)),
+    "p2-large": suite(P2_TOPOS, ["large-read90"]),
+    "p2-ttl": suite(P2_TOPOS, ["ttl-mixed50"], warmup=8),
+    # Precise pacing (loadgen --spin-pacing), plus timer pacing as in Part I for comparison at one rate.
+    "p2-openloop": [dict(s, pacing="spin") for s in suite(P2_TOPOS, ["read90"], rates=(20_000, 60_000, 100_000))]
+                   + suite(["valkey-1t", "rvk-2t"], ["read90"], rates=(60_000,)),
+    "p2-evict": suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["evict-uniform", "evict-skew"]),
+    "p2-cold": suite(P2_TOPOS, ["cold-read90"]),
+    "p2-churn": suite(P2_ONE_ENDPOINT, ["get100-churn"], tool="valkey-benchmark"),
+    "p2-crosscheck": suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["get100"], tool="valkey-benchmark")
+                     + suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["get100"]),
+    "p2-clients": suite(["valkey-1t", "valkey-io2", "rvk-2t"],
+                        ["rs-read90", "rs-read90-mux1", "rs-skew-read90", "rs-skew-read90-mux1"], tool="rsclient")
+                  + suite(["valkey-1t", "valkey-io2"], ["rs-skew-read90-mux1-cache"], tool="rsclient"),
+})
 
 
 # --------------------------------------------------------------------------
@@ -332,6 +412,15 @@ INFO_GAUGES = ["used_memory", "used_memory_rss", "mem_fragmentation_ratio", "con
 
 
 def loadgen_cmd(spec, wl, ports, tool):
+    if tool == "rsclient":
+        if len(ports) != 1:
+            raise RuntimeError("rsclient runs need one endpoint")
+        return ["taskset", "-c", CLIENT_CPUS, RSCLIENT, "--port", str(ports[0]), "--tasks", str(spec["conns"]),
+                "--conns", str(wl.get("mux") or spec["conns"]), "--threads", "2",
+                "--duration", str(spec["duration"]), "--warmup", str(spec["warmup"]),
+                "--keyspace", str(wl["keyspace"]), "--zipf", str(wl["zipf"]), "--get-ratio", str(wl["get_ratio"]),
+                "--value-size", str(wl["value_size"]), "--cache", str(wl.get("cache", 0)),
+                "--label", f'{spec["topo"]}/{wl["name"]}']
     if tool == "valkey-benchmark":
         if len(ports) != 1 or wl["get_ratio"] != 1.0:
             raise RuntimeError("valkey-benchmark runs need one endpoint and a GET-only workload")
@@ -348,6 +437,8 @@ def loadgen_cmd(spec, wl, ports, tool):
            "--label", f'{spec["topo"]}/{wl["name"]}']
     if spec["rate"]:
         cmd += ["--rate", str(spec["rate"])]
+        if spec.get("pacing") == "spin":
+            cmd += ["--spin-pacing"]
     return cmd
 
 
@@ -453,11 +544,15 @@ def brief(rec):
             f'{d["server_side_cpu_us_per_op"]}us/op  err={c.get("errors")}')
 
 
+def raw_dir(suite_name):
+    return os.path.join(RESULTS, "raw2" if suite_name.startswith("p2-") else "raw")
+
+
 def cmd_run(args):
-    os.makedirs(os.path.join(RESULTS, "raw"), exist_ok=True)
     for name in args.suites:
         specs = SUITES[name]
-        path = os.path.join(RESULTS, "raw", f"{name}.jsonl")
+        os.makedirs(raw_dir(name), exist_ok=True)
+        path = os.path.join(raw_dir(name), f"{name}.jsonl")
         print(f"== suite {name}: {len(specs)} runs -> {path}", flush=True)
         with open(path, "a") as out:
             for i, spec in enumerate(specs, 1):
@@ -513,11 +608,14 @@ def cmd_env(args):
         "cargo": sh("cargo --version"),
         "python": sys.version.split()[0],
         "binaries_sha256": {os.path.basename(p): sha256(p) for p in
-                            (VALKEY_SERVER, VALKEY_BENCH, LOADGEN, PROXY, MAPMEM) if os.path.exists(p)},
+                            (VALKEY_SERVER, VALKEY_BENCH, LOADGEN, PROXY, MAPMEM, RVK, RSCLIENT)
+                            if os.path.exists(p)},
         "cpu_layout": {"server_side": SERVER_CPUS, "client": CLIENT_CPUS},
     }
     os.makedirs(RESULTS, exist_ok=True)
-    with open(os.path.join(RESULTS, "environment.json"), "w") as f:
+    # Part I's environment.json records the binaries its raw data came from; Part II gets its own file.
+    name = "environment_part2.json" if args.part2 else "environment.json"
+    with open(os.path.join(RESULTS, name), "w") as f:
         json.dump(env, f, indent=2)
     print(json.dumps({k: v for k, v in env.items() if k != "lscpu"}, indent=2))
 
@@ -528,7 +626,8 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("suites", nargs="+", choices=sorted(SUITES))
     sub.add_parser("crosscheck")
-    sub.add_parser("env")
+    e = sub.add_parser("env")
+    e.add_argument("--part2", action="store_true")
     sub.add_parser("list")
     args = ap.parse_args()
     if args.cmd == "run":

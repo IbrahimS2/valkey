@@ -507,10 +507,12 @@ fn used_memory(sh: &Shared, tc: &ThreadCtx) -> usize {
 
 /// Evicts keys until memory is below `maxmemory`. Returns false if the
 /// command must be refused with OOM. Like Valkey's `performEvictions`, a
-/// command proceeds while eviction is making progress (EVICT_RUNNING) and is
-/// refused only when nothing can be evicted (EVICT_FAIL). Refusing after a
-/// fixed number of evictions instead produced spurious OOM errors under
-/// concurrent writers (found by tests/concurrency.py memory_bound).
+/// command proceeds once memory fits (EVICT_OK) or while eviction is making
+/// progress (EVICT_RUNNING), and is refused only when nothing can be evicted
+/// (EVICT_FAIL). Other threads change memory concurrently, so the decision
+/// uses what this call observed rather than a final re-read; refusing after a
+/// fixed number of evictions, or on a final re-read, both produced spurious
+/// OOM errors under concurrent writers.
 fn make_room(sh: &Shared, tc: &mut ThreadCtx) -> bool {
     let max = sh.maxmemory.load(Ordering::Relaxed);
     if max == 0 || used_memory(sh, tc) <= max {
@@ -523,9 +525,11 @@ fn make_room(sh: &Shared, tc: &mut ThreadCtx) -> bool {
     let now = now_ms();
     let lru_now = (now / 1000) as u32;
     let mut evicted = 0u64;
+    let mut fits = false;
     // Bounded work per command, like Valkey's eviction time limit.
     for _ in 0..64 {
         if used_memory(sh, tc) <= max {
+            fits = true;
             break;
         }
         if !evict_one(sh, tc, policy, lru_now) {
@@ -534,7 +538,7 @@ fn make_room(sh: &Shared, tc: &mut ThreadCtx) -> bool {
         evicted += 1;
     }
     Stats::add(&tc.stats().evicted, evicted);
-    evicted > 0 || used_memory(sh, tc) <= max
+    fits || evicted > 0
 }
 
 fn evict_one(sh: &Shared, tc: &mut ThreadCtx, policy: Policy, lru_now: u32) -> bool {

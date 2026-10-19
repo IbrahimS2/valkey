@@ -10,7 +10,10 @@
 //! * closed loop (default): each connection sends `--pipeline` requests and
 //!   waits for all replies before sending more.
 //! * open loop (`--rate R`): connections send on a fixed schedule independent
-//!   of replies, so latency is measured at a fixed offered load.
+//!   of replies, so latency is measured at a fixed offered load. By default
+//!   sends wait on tokio's timer, whose 1 ms resolution makes connections send
+//!   in bursts on each tick; `--spin-pacing` sleeps coarsely and then yields
+//!   until the exact send time (costs client CPU, not server CPU).
 //! * preload (`--preload`): SET every key once, then exit.
 //!
 //! `--port A,B,...` treats each port as one shard: connection `c` talks to
@@ -50,6 +53,7 @@ struct Config {
     seed: u64,
     label: String,
     preload: bool,
+    spin_pacing: bool,
 }
 
 impl Default for Config {
@@ -72,6 +76,7 @@ impl Default for Config {
             seed: 1,
             label: String::new(),
             preload: false,
+            spin_pacing: false,
         }
     }
 }
@@ -81,7 +86,7 @@ fn usage() -> ! {
         "usage: loadgen [--host H] [--port P[,P...]] [--conns N] [--threads T] [--duration S]\n\
          \t[--warmup S] [--pipeline P] [--keyspace K] [--zipf THETA (0=uniform)]\n\
          \t[--get-ratio R] [--value-size B] [--ttl SECONDS] [--rate OPS_PER_SEC]\n\
-         \t[--timeout-ms MS] [--seed N] [--label TEXT] [--preload]"
+         \t[--timeout-ms MS] [--seed N] [--label TEXT] [--preload] [--spin-pacing]"
     );
     std::process::exit(2);
 }
@@ -94,6 +99,11 @@ fn parse_args() -> Config {
         let k = args[i].as_str();
         if k == "--preload" {
             c.preload = true;
+            i += 1;
+            continue;
+        }
+        if k == "--spin-pacing" {
+            c.spin_pacing = true;
             i += 1;
             continue;
         }
@@ -377,6 +387,23 @@ async fn closed_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng,
     Ok(())
 }
 
+/// Waits until `t`. tokio's timer fires on 1 ms ticks; with `spin` the last
+/// stretch is spent yielding, so a send leaves within microseconds of `t`.
+async fn wait_until(t: Instant, spin: bool) {
+    if !spin {
+        sleep_until(t.into()).await;
+        return;
+    }
+    if let Some(coarse) = t.checked_sub(Duration::from_millis(2)) {
+        if coarse > Instant::now() {
+            sleep_until(coarse.into()).await;
+        }
+    }
+    while Instant::now() < t {
+        tokio::task::yield_now().await;
+    }
+}
+
 async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, shard: usize) -> ConnResult {
     let sock = connect(&sh.cfg, shard).await?;
     let (mut rd, mut wr) = sock.into_split();
@@ -436,11 +463,12 @@ async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, s
         let sh = sh.clone();
         let st = st.clone();
         async move {
+            let spin = sh.cfg.spin_pacing;
             let mut next = sh.start + interval.mul_f64(rng.unit());
             let mut wbuf = Vec::new();
-            sleep_until(next.into()).await;
+            wait_until(next, spin).await;
             while next < sh.end {
-                sleep_until(next.into()).await;
+                wait_until(next, spin).await;
                 let now = Instant::now();
                 wbuf.clear();
                 while next <= now && next < sh.end {
@@ -637,7 +665,7 @@ fn main() {
     };
     println!(
         "{{\"tool\":\"loadgen\",\"label\":\"{}\",\"conns\":{},\"threads\":{},\"pipeline\":{},\"keyspace\":{},\"zipf\":{},\
-\"get_ratio\":{},\"value_size\":{},\"ttl\":{},\"rate_target\":{},\"duration\":{},\"warmup\":{},\
+\"get_ratio\":{},\"value_size\":{},\"ttl\":{},\"rate_target\":{},\"spin_pacing\":{},\"duration\":{},\"warmup\":{},\
 \"ops\":{},\"ops_per_sec\":{:.1},\"gets\":{},\"sets\":{},\"hits\":{},\"misses\":{},\"hit_rate\":{},\
 \"errors\":{},\"timeouts\":{},\"conn_failures\":{},\"send_skipped\":{},\"bytes_tx\":{},\"bytes_rx\":{},\
 \"lat_us\":{},\"get_lat_us\":{},\"set_lat_us\":{},\"sched_lag_us\":{},\"lat_from_intended_us\":{}}}",
@@ -651,6 +679,7 @@ fn main() {
         cfg.value_size,
         cfg.ttl,
         cfg.rate,
+        cfg.spin_pacing,
         cfg.duration,
         cfg.warmup,
         total.ops,
