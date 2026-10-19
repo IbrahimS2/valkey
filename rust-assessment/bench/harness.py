@@ -366,6 +366,10 @@ SUITES.update({
     "p2-churn": suite(P2_ONE_ENDPOINT, ["get100-churn"], tool="valkey-benchmark"),
     "p2-crosscheck": suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["get100"], tool="valkey-benchmark")
                      + suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["get100"]),
+    # Added after pre-registration, characterization only (not used by the gates): offered load above the
+    # capacity of the single-core topologies, and what persistence costs Valkey on the Part II host.
+    "p2-overload": [dict(s, pacing="spin") for s in suite(P2_TOPOS, ["read90"], rates=(150_000, 300_000))],
+    "p2-aof": suite(["valkey-1t", "valkey-2shard"], ["read90-aof", "write90-aof"]),
     "p2-clients": suite(["valkey-1t", "valkey-io2", "rvk-2t"],
                         ["rs-read90", "rs-read90-mux1", "rs-skew-read90", "rs-skew-read90-mux1"], tool="rsclient")
                   + suite(["valkey-1t", "valkey-io2"], ["rs-skew-read90-mux1-cache"], tool="rsclient"),

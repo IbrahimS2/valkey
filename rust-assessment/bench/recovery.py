@@ -9,7 +9,12 @@ Sections (each appends JSON lines to ../results/raw/recovery.jsonl):
   failover - in-flight request outcome when Valkey is killed under load,
              direct vs. through the proxy
 
-Usage: bench/recovery.py [section ...]   (default: all)
+Part II sections (append to ../results/raw2/recovery.jsonl; not run by default):
+  p2-memory   - used_memory and RSS per key, Valkey vs rvk-server (both jemalloc)
+  p2-startup  - empty-server start to first PONG, Valkey vs rvk-server
+  p2-failover - the failover scenario against Valkey and rvk-server directly
+
+Usage: bench/recovery.py [section ...]   (default: all Part I sections)
 """
 
 import json
@@ -198,16 +203,105 @@ def section_failover(out):
                 shutil.rmtree(wd, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------
+# Part II
+# --------------------------------------------------------------------------
+
+OUT2 = os.path.join(h.RESULTS, "raw2", "recovery.jsonl")
+
+
+def start_impl(impl, wd):
+    if impl == "valkey":
+        return h.Valkey(h.BASE_PORT, h.SERVER_CPUS[0], wd, [])
+    return h.Rvk(h.BASE_PORT, h.SERVER_CPUS[0], 1, wd, [])
+
+
+def section_p2memory(out):
+    for keys, vsize in ((1_000_000, 100), (100_000, 16384)):
+        for impl in ("valkey", "rvk"):
+            for trial in range(TRIALS):
+                wd = tempfile.mkdtemp(prefix="vrec-")
+                v = start_impl(impl, wd)
+                try:
+                    m0, r0 = used_memory(v.port)
+                    rss0 = h.rss_bytes(v.pid)
+                    preload(v.port, keys, vsize)
+                    time.sleep(1.0)
+                    m1, r1 = used_memory(v.port)
+                    rss1 = h.rss_bytes(v.pid)
+                    emit(out, {"section": "p2-memory", "impl": impl, "keys": keys, "value_size": vsize,
+                               "trial": trial, "used_memory_per_key": round((m1 - m0) / keys, 1),
+                               "rss_per_key": round((rss1 - rss0) / keys, 1),
+                               "info_rss_per_key": round((r1 - r0) / keys, 1), "payload_per_key": 16 + vsize})
+                finally:
+                    v.stop()
+                    shutil.rmtree(wd, ignore_errors=True)
+
+
+def section_p2startup(out):
+    """Process start to first PONG on an empty dataset, polling PING every 2 ms."""
+    for impl in ("valkey", "rvk"):
+        for trial in range(5):
+            wd = tempfile.mkdtemp(prefix="vrec-")
+            if impl == "valkey":
+                cmd = ["taskset", "-c", h.SERVER_CPUS[0], h.VALKEY_SERVER, "--port", str(h.BASE_PORT), "--bind",
+                       "127.0.0.1", "--save", "", "--appendonly", "no", "--dir", wd, "--logfile",
+                       os.path.join(wd, "s.log")]
+            else:
+                cmd = ["taskset", "-c", h.SERVER_CPUS[0], h.RVK, "--port", str(h.BASE_PORT), "--bind",
+                       "127.0.0.1", "--threads", "1"]
+            p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            secs = ping_until_ok(h.BASE_PORT)
+            subprocess.run([h.VALKEY_CLI, "-p", str(h.BASE_PORT), "SHUTDOWN", "NOSAVE"], capture_output=True)
+            p.wait(timeout=30)
+            shutil.rmtree(wd, ignore_errors=True)
+            emit(out, {"section": "p2-startup", "impl": impl, "trial": trial,
+                       "start_to_pong_seconds": round(secs, 4) if secs is not None else None,
+                       "note": "empty dataset; rvk-server has no persistence, so it always restarts empty"})
+
+
+def section_p2failover(out):
+    """SIGKILL the server 4 s into a 10 s open-loop run and restart it at once (empty for both)."""
+    for impl in ("valkey", "rvk"):
+        for trial in range(TRIALS):
+            wd = tempfile.mkdtemp(prefix="vrec-")
+            v = start_impl(impl, wd)
+            try:
+                preload(v.port, 100_000, 100)
+                lg = subprocess.Popen(["taskset", "-c", h.CLIENT_CPUS, h.LOADGEN, "--port", str(h.BASE_PORT),
+                                       "--conns", "50", "--threads", "2", "--duration", "10", "--warmup", "0",
+                                       "--keyspace", "100000", "--get-ratio", "0.9", "--rate", "20000",
+                                       "--timeout-ms", "2000", "--spin-pacing"],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                time.sleep(0.5 + 4.0)
+                v.proc.send_signal(signal.SIGKILL)
+                v.proc.wait()
+                t_kill = time.monotonic()
+                v = start_impl(impl, wd)
+                back = time.monotonic() - t_kill
+                stdout, stderr = lg.communicate(timeout=60)
+                res = json.loads(stdout)
+                emit(out, {"section": "p2-failover", "impl": impl, "trial": trial,
+                           "restart_seconds": round(back, 3), "ops_completed": res["ops"], "ops_target": 200_000,
+                           "errors": res["errors"], "timeouts": res["timeouts"],
+                           "conn_failures": res["conn_failures"], "hit_rate": res["hit_rate"]})
+            finally:
+                v.stop()
+                shutil.rmtree(wd, ignore_errors=True)
+
+
 SECTIONS = {"memory": section_memory, "rdb": section_rdb, "aof": section_aof, "proxy": section_proxy,
             "failover": section_failover}
+SECTIONS2 = {"p2-memory": section_p2memory, "p2-startup": section_p2startup, "p2-failover": section_p2failover}
 
 
 def main():
     names = sys.argv[1:] or list(SECTIONS)
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, "a") as out:
-        for n in names:
-            SECTIONS[n](out)
+    for n in names:
+        path = OUT2 if n in SECTIONS2 else OUT
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a") as out:
+            {**SECTIONS, **SECTIONS2}[n](out)
 
 
 if __name__ == "__main__":

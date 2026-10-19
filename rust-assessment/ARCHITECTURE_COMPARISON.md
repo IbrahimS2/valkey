@@ -1,0 +1,92 @@
+# Architecture comparison: three Rust candidates
+
+The reassessment directive names three separate candidates. This document describes each candidate, why it
+takes the shape it does, what was built or reused, and how it fared. The audit that motivated the split is in
+REASSESSMENT.md. The measurements are in BENCHMARK_RESULTS.md Part II, and the decision is in
+ARCHITECTURE_DECISION.md.
+
+| | A. Rust-native server | B. Production-oriented proxy | C. Rust optimization layer |
+|---|---|---|---|
+| What | `rvk-server`: a multi-threaded, Valkey-compatible server for a declared string-cache scope | A process between clients and Valkey that multiplexes and pipelines | Client-side functionality in Rust: multiplexed connections, auto-pipelining, client-side caching |
+| Hypothesis | One endpoint served from several cores beats Valkey's single-endpoint options and matches sharding without client routing | Batching inside a proxy reduces Valkey's per-request cost | Batching and caching in the client remove server work entirely |
+| Built in Part II? | **Yes**, about 3,500 lines of Rust | **No**: bounded by Part I measurements (REASSESSMENT.md §3); one continuity run | **No new code**: the maintained `redis` crate (redis-rs 1.7.1) is measured as is |
+| Client contract | Unchanged (one endpoint, any Valkey client) | Unchanged | Requires the client library and, for caching, RESP3 |
+
+## 1. Candidate A: `rvk-server`
+
+### 1.1 Why this architecture
+
+Part I found that Valkey's per-request cost is dominated by kernel networking. It also found that Valkey's
+multi-core options either require cluster-aware clients (sharding) or performed poorly on 2 vCPUs
+(`io-threads`, which still runs every command on the main thread). A Rust server can only beat Valkey if it
+changes where that work runs. Options considered:
+
+| Design | Per-core work | Multi-core | Why chosen or not |
+|---|---|---|---|
+| Single-threaded Rust clone of Valkey | Same system calls per request; user-space work in Rust instead of C | No | Kept as a configuration (`rvk-1t`): it isolates the **language and implementation** effect (ratio R1). Alone it is capped by Part I's per-core bound |
+| tokio-based async server | Extra wakeups, task scheduling, and cross-thread handoffs (Part I's proxy spent 7% in `finish_task_switch`) | Yes | Rejected: the measured proxy showed tokio's scheduling overhead on exactly this kind of workload |
+| Shared-nothing, thread per core, keys owned by threads (Dragonfly, Seastar) | No locks | Yes | Rejected for the PoC: with N threads, (N−1)/N of requests land on a thread that does not own the key and need a cross-thread message and a wakeup. That is the cost the proxy paid. Worth it at high core counts; not at 2 |
+| **Thread per core with its own event loop, shared lock-sharded keyspace** (memcached, KeyDB) | One uncontended mutex per command (~20 ns), no cross-thread handoff | Yes, one endpoint | **Chosen.** Each connection stays on one thread for its lifetime, and any thread can execute any command |
+| `io_uring` | Fewer system calls per request | Either | Deferred: it changes the kernel interface rather than the language, and C can use it equally (this Valkey tree does not). It would confound the language/architecture question |
+
+### 1.2 What was built
+
+| Part | Design |
+|---|---|
+| Event loop (`server.rs`) | One `mio` poll (edge-triggered `epoll`) per worker thread, each with its own `SO_REUSEPORT` listener, so the kernel spreads connections across workers without a dispatcher. Reads continue until a short read (no wasted `EAGAIN` read); all replies from one read go out in one `write`; `WRITABLE` interest only while output is pending; input processing pauses while more than 64 MB of output is pending |
+| Protocol (`resp.rs`) | RESP2 multibulk and inline parsing that reproduces Valkey's limits, error texts and `sdsparsearg` tokenizing; RESP2/RESP3 reply encoding |
+| Keyspace (`store.rs`) | 64 shards, each a `Mutex` around a dense slab of entries plus a `hashbrown` index of 4-byte slab positions. Key and value share one allocation. `foldhash` hashing; the shard is taken from separate hash bits so the index stays well distributed. Per-shard min-heap of expiry deadlines |
+| Commands (`cmd.rs`) | 61 commands (FEATURE_MATRIX.md) with Valkey's arity, flags and error texts. Multi-key commands lock their shards in ascending order (atomic and deadlock-free). `EXEC` locks the shards of every queued and watched key, then checks the watch flags |
+| Expiry | Lazy on access; active expiry per shard every 100 ms with a 25% time budget |
+| Eviction | `allkeys-lru` (5 samples, 16-entry candidate pool, as in `evict.c`), `allkeys-random`, `noeviction`; memory measured from jemalloc |
+| Allocator | jemalloc, as Valkey uses |
+
+### 1.3 Correctness evidence
+
+Summarized from FEATURE_MATRIX.md:
+
+* 50,358 differential cases against Valkey, 1 mismatch (`INCRBYFLOAT` formatting, declared partial).
+* All concurrency invariants pass at 2 and 4 threads, with and without `maxmemory`.
+* 68 of Valkey's own Tcl tests pass. Every file stopped at an out-of-scope command, and no in-scope test
+  failed.
+
+### 1.4 What it does not have
+
+Everything in FEATURE_MATRIX.md §8, including persistence, replication, cluster mode, ACL users, TLS, other data
+types, Pub/Sub, scripting, `CLIENT TRACKING` and most observability. ARCHITECTURE_DECISION.md costs these. Two
+are architectural rather than just missing:
+
+* **Persistence.** Valkey snapshots with `fork()` and copy-on-write, which relies on one thread mutating the
+  dataset. A multi-threaded server needs a non-fork snapshot design, such as Dragonfly's versioned snapshotting.
+  That is substantial new design work, not a port.
+* **`CLIENT TRACKING` and keyspace notifications.** Invalidation must be emitted to connections owned by other
+  threads, which reintroduces cross-thread messaging on the write path.
+
+## 2. Candidate B: production-oriented proxy
+
+Not re-implemented. REASSESSMENT.md §3 shows that the proxy's CPU floor is set by measured kernel costs on both
+hops, so no implementation can beat sharding on CPU per operation on the measured host. A production version
+would also need the restart-propagation fix, TLS, ACL pass-through, cluster topology handling and session pinning
+for connection-scoped commands. The `p2-proxy` suite places the Part I prototype on the Part II host for
+reference.
+
+## 3. Candidate C: established Rust client functionality
+
+Measured with `rsclient`, a 322-line driver around the `redis` crate 1.7.1. It is not a new implementation.
+
+* **Multiplexing.** 50 logical clients share one `MultiplexedConnection`. The crate pipelines whatever is in
+  flight on that socket, so the server sees batches without the application batching. This is the same
+  mechanism as the Part I proxy, inside the client process, so it has no extra hop.
+* **Client-side caching.** The crate's experimental `cache-aio` feature uses RESP3 `CLIENT TRACKING`, so the
+  server sends invalidation pushes. Cached GETs never reach the server.
+* **GLIDE.** Valkey GLIDE has a Rust core with the same multiplexing and, since 2.4, a client-side cache. Its Rust
+  crate is a preview, and GLIDE is normally used from Python, Java, Node or Go. It was not measured here.
+  redis-rs is the measured stand-in for "established Rust client functionality".
+
+## 4. Results by candidate
+
+Filled from BENCHMARK_RESULTS.md Part II.
+
+## 5. Multi-agent review of `rvk-server`
+
+Filled after the review completes.
