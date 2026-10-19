@@ -1,2 +1,4 @@
 # Rust build output for the benchmark tools.
 bench/rust/target/
+# Rust build output for the PoC workspace.
+poc/target/

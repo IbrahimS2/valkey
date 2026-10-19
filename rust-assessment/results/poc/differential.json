@@ -1,0 +1,56 @@
+{
+ "cases": {
+  "strings": {
+   "total": 104,
+   "mismatches": []
+  },
+  "integers": {
+   "total": 42,
+   "mismatches": [
+    {
+     "cmd": [
+      "incrbyfloat",
+      "f",
+      "1e3"
+     ],
+     "valkey": "1005.59999999999999998",
+     "rvk": "1005.6"
+    }
+   ]
+  },
+  "keyspace": {
+   "total": 73,
+   "mismatches": []
+  },
+  "transactions": {
+   "total": 50,
+   "mismatches": []
+  },
+  "connection": {
+   "total": 27,
+   "mismatches": []
+  }
+ },
+ "resp3": {
+  "total": 17,
+  "mismatches": []
+ },
+ "watch_two_clients": {
+  "total": 26,
+  "mismatches": []
+ },
+ "raw_protocol": {
+  "total": 19,
+  "mismatches": []
+ },
+ "fuzz": {
+  "total": 50000,
+  "seed": 7,
+  "mismatches": []
+ },
+ "summary": {
+  "total": 50358,
+  "mismatches": 1,
+  "seconds": 12.4
+ }
+}

@@ -231,6 +231,9 @@ struct Stats {
     get: Histogram<u64>,
     set: Histogram<u64>,
     lag: Histogram<u64>,
+    /// Open loop only: latency from the *intended* send time, which includes
+    /// any lateness of this generator (no coordinated omission).
+    intended: Histogram<u64>,
     ops: u64,
     gets: u64,
     sets: u64,
@@ -251,6 +254,7 @@ impl Stats {
             get: new_hist(),
             set: new_hist(),
             lag: new_hist(),
+            intended: new_hist(),
             ops: 0,
             gets: 0,
             sets: 0,
@@ -270,6 +274,7 @@ impl Stats {
         self.get.add(&o.get).unwrap();
         self.set.add(&o.set).unwrap();
         self.lag.add(&o.lag).unwrap();
+        self.intended.add(&o.intended).unwrap();
         self.ops += o.ops;
         self.gets += o.gets;
         self.sets += o.sets;
@@ -375,7 +380,8 @@ async fn closed_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng,
 async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, shard: usize) -> ConnResult {
     let sock = connect(&sh.cfg, shard).await?;
     let (mut rd, mut wr) = sock.into_split();
-    let inflight: Rc<RefCell<VecDeque<(Instant, Op)>>> = Rc::new(RefCell::new(VecDeque::new()));
+    // (actual send time, intended send time, op)
+    let inflight: Rc<RefCell<VecDeque<(Instant, Instant, Op)>>> = Rc::new(RefCell::new(VecDeque::new()));
     let writer_done = Rc::new(Cell::new(false));
     let interval = Duration::from_secs_f64(sh.cfg.conns as f64 / sh.cfg.rate);
 
@@ -392,8 +398,12 @@ async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, s
                 let now = Instant::now();
                 while let Some((end, kind)) = parse_reply_from(&rbuf, rpos).map_err(|e| e.to_string())? {
                     rpos = end;
-                    let (sent, op) = inflight.borrow_mut().pop_front().ok_or("reply without request")?;
-                    st.borrow_mut().record(&sh, op, kind, sent, now);
+                    let (sent, intended, op) = inflight.borrow_mut().pop_front().ok_or("reply without request")?;
+                    let mut s = st.borrow_mut();
+                    s.record(&sh, op, kind, sent, now);
+                    if now >= sh.measure_start && now <= sh.end {
+                        s.intended.saturating_record(now.saturating_duration_since(intended).as_nanos().max(1) as u64);
+                    }
                 }
                 if writer_done.get() && inflight.borrow().is_empty() {
                     return Ok::<(), String>(());
@@ -405,7 +415,7 @@ async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, s
                 rbuf.reserve(16 * 1024);
                 match timeout(Duration::from_millis(100), rd.read_buf(&mut rbuf)).await {
                     Err(_) => {
-                        let oldest = inflight.borrow().front().map(|(t, _)| *t);
+                        let oldest = inflight.borrow().front().map(|(t, _, _)| *t);
                         if let Some(t) = oldest {
                             if t.elapsed() > to {
                                 let n = inflight.borrow().len() as u64;
@@ -438,7 +448,7 @@ async fn open_loop_conn(sh: Arc<Shared>, st: Rc<RefCell<Stats>>, mut rng: Rng, s
                         st.borrow_mut().send_skipped += 1;
                     } else {
                         let op = sh.gen_op(&mut rng, shard, &mut wbuf);
-                        inflight.borrow_mut().push_back((now, op));
+                        inflight.borrow_mut().push_back((now, next, op));
                         if now >= sh.measure_start {
                             st.borrow_mut().lag.saturating_record(now.duration_since(next).as_nanos().max(1) as u64);
                         }
@@ -630,7 +640,7 @@ fn main() {
 \"get_ratio\":{},\"value_size\":{},\"ttl\":{},\"rate_target\":{},\"duration\":{},\"warmup\":{},\
 \"ops\":{},\"ops_per_sec\":{:.1},\"gets\":{},\"sets\":{},\"hits\":{},\"misses\":{},\"hit_rate\":{},\
 \"errors\":{},\"timeouts\":{},\"conn_failures\":{},\"send_skipped\":{},\"bytes_tx\":{},\"bytes_rx\":{},\
-\"lat_us\":{},\"get_lat_us\":{},\"set_lat_us\":{},\"sched_lag_us\":{}}}",
+\"lat_us\":{},\"get_lat_us\":{},\"set_lat_us\":{},\"sched_lag_us\":{},\"lat_from_intended_us\":{}}}",
         cfg.label.replace('"', "'"),
         cfg.conns,
         cfg.threads,
@@ -660,5 +670,6 @@ fn main() {
         pct_json(&total.get),
         pct_json(&total.set),
         pct_json(&total.lag),
+        pct_json(&total.intended),
     );
 }

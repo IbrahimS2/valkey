@@ -1,0 +1,19 @@
+# Proof-of-concept implementations for the Rust-vs-Valkey reassessment.
+# See ../REASSESSMENT.md and ../ARCHITECTURE_COMPARISON.md. Not production code.
+[workspace]
+resolver = "2"
+members = ["rvk-server", "rsclient"]
+
+[workspace.package]
+edition = "2021"
+publish = false
+license = "BSD-3-Clause"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 1
+# Fail fast like Valkey's serverAssert: a panic aborts the whole process
+# instead of leaving a half-working server with a dead thread.
+panic = "abort"

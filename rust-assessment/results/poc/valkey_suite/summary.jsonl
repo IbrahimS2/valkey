@@ -1,0 +1,16 @@
+{"target":"valkey","test":"unit/type/string","ok":125,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/type/incr","ok":82,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/expire","ok":79,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/keyspace","ok":48,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/multi","ok":68,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/protocol","ok":37,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/auth","ok":0,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"valkey","test":"unit/info-command","ok":5,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"rvk-2t","test":"unit/type/string","ok":6,"err":0,"timeout":0,"exception":1,"first_blocker":"ERR unknown command 'memory', with args beginning with: 'usage' 'key'."}
+{"target":"rvk-2t","test":"unit/type/incr","ok":11,"err":0,"timeout":0,"exception":1,"first_blocker":"ERR unknown command 'rpush', with args beginning with: 'mylist' '1'."}
+{"target":"rvk-2t","test":"unit/expire","ok":3,"err":0,"timeout":0,"exception":1,"first_blocker":"ERR unknown command 'lpush', with args beginning with: 'x' 'foo'."}
+{"target":"rvk-2t","test":"unit/keyspace","ok":27,"err":0,"timeout":0,"exception":1,"first_blocker":"ERR unknown command 'copy', with args beginning with: 'mykey{t}' 'mynewkey{t}'."}
+{"target":"rvk-2t","test":"unit/multi","ok":0,"err":0,"timeout":0,"exception":1,"first_blocker":"ERR unknown command 'rpush', with args beginning with: 'mylist' 'a'."}
+{"target":"rvk-2t","test":"unit/protocol","ok":21,"err":3,"timeout":0,"exception":1,"first_blocker":"ERR DEBUG subcommand 'protocol' is not supported by this proof of concept."}
+{"target":"rvk-2t","test":"unit/auth","ok":0,"err":0,"timeout":0,"exception":0,"first_blocker":""}
+{"target":"rvk-2t","test":"unit/info-command","ok":0,"err":0,"timeout":0,"exception":1,"first_blocker":"can't read 'version': no such variable."}
