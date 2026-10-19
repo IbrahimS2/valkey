@@ -4,7 +4,9 @@
 //! db.c, multi.c, server.c). Only the string type exists, so WRONGTYPE paths
 //! are unreachable. FEATURE_MATRIX.md lists what is and is not covered.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
+use std::hash::BuildHasher;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, MutexGuard};
 
@@ -32,7 +34,6 @@ pub struct ThreadCtx {
     pool: Vec<PoolEntry>,
     keybuf: Vec<(usize, u64)>,
     pub shutdown_requested: bool,
-    active_expire: bool,
     /// jemalloc-allocated bytes and the dataset estimate at the last refresh.
     alloc_snapshot: (usize, usize),
 }
@@ -50,7 +51,6 @@ impl ThreadCtx {
             pool: Vec::new(),
             keybuf: Vec::new(),
             shutdown_requested: false,
-            active_expire: true,
             alloc_snapshot: (0, 0),
         }
     }
@@ -69,17 +69,26 @@ impl ThreadCtx {
 struct Multi {
     queued: Vec<Vec<Vec<u8>>>,
     errored: bool,
+    /// Bytes held by queued arguments; Valkey counts them against the
+    /// client's query-buffer limit.
+    bytes: usize,
+    /// Some queued command may grow memory (EXEC then checks `maxmemory`).
+    denyoom: bool,
 }
 
 pub struct ConnState {
     pub id: u64,
     resp3: bool,
     authed: bool,
+    /// Authenticated at some point (Valkey's `clientEverAuthenticated`).
+    ever_authed: bool,
     name: Option<Vec<u8>>,
     multi: Option<Multi>,
-    watched: Vec<Vec<u8>>,
+    watched: HashSet<Box<[u8]>>,
     watch_flag: WatchFlag,
     pub close_after_reply: bool,
+    /// Close at once without writing pending output (query-buffer limit).
+    pub kill: bool,
 }
 
 impl ConnState {
@@ -87,26 +96,34 @@ impl ConnState {
     pub fn authed(&self) -> bool {
         self.authed
     }
+    /// Valkey limits clients that have never authenticated to a 1 MB query
+    /// buffer and about 1 KB of output beyond the 16 KB static reply buffer.
+    #[inline]
+    pub fn never_authed(&self) -> bool {
+        !self.ever_authed
+    }
     pub fn new(id: u64, authed: bool) -> Self {
         ConnState {
             id,
             resp3: false,
             authed,
+            ever_authed: authed,
             name: None,
             multi: None,
-            watched: Vec::new(),
+            watched: HashSet::new(),
             watch_flag: Arc::new(AtomicBool::new(false)),
             close_after_reply: false,
+            kill: false,
         }
     }
 }
 
-pub fn on_disconnect(tc: &mut ThreadCtx, conn: &mut ConnState) {
-    unwatch_all(&tc.shared.clone().store, conn);
+pub fn on_disconnect(sh: &Shared, conn: &mut ConnState) {
+    unwatch_all(&sh.store, conn);
 }
 
 fn unwatch_all(store: &Store, conn: &mut ConnState) {
-    for key in conn.watched.drain(..) {
+    for key in conn.watched.drain() {
         let h = store.hash(&key);
         store.lock(Store::shard_of(h)).unwatch(&key, &conn.watch_flag);
     }
@@ -201,7 +218,7 @@ fn lookup(name: &[u8]) -> Option<Spec> {
         b"flushall" => spec!("flushall", -1, WRITE, Keys::All, cmd_flushall),
         b"flushdb" => spec!("flushdb", -1, WRITE, Keys::All, cmd_flushall),
         b"multi" => spec!("multi", 1, NOMULTI, Keys::None, cmd_multi),
-        b"exec" => spec!("exec", 1, NOMULTI, Keys::None, cmd_exec),
+        b"exec" => spec!("exec", -1, NOMULTI, Keys::None, cmd_exec),
         b"discard" => spec!("discard", 1, NOMULTI, Keys::None, cmd_discard),
         b"watch" => spec!("watch", -2, NOMULTI, KALL1, cmd_watch),
         b"unwatch" => spec!("unwatch", 1, 0, Keys::None, cmd_unwatch),
@@ -218,7 +235,7 @@ fn lookup(name: &[u8]) -> Option<Spec> {
         b"info" => spec!("info", -1, 0, Keys::None, cmd_info),
         b"time" => spec!("time", 1, 0, Keys::None, cmd_time),
         b"debug" => spec!("debug", -2, 0, Keys::None, cmd_debug),
-        b"shutdown" => spec!("shutdown", -1, 0, Keys::None, cmd_shutdown),
+        b"shutdown" => spec!("shutdown", -1, NOMULTI, Keys::None, cmd_shutdown),
         b"function" => spec!("function", -2, 0, Keys::None, cmd_function_script),
         b"script" => spec!("script", -2, 0, Keys::None, cmd_function_script),
         _ => None,
@@ -285,6 +302,20 @@ impl<'a, 's> Cx<'a, 's> {
         self.fx = fx;
         (h, i)
     }
+    /// `lookupKeyRead`: like `find`, and counts a keyspace hit or miss.
+    /// `touch` is false for commands Valkey runs with LOOKUP_NOTOUCH (TTL,
+    /// TYPE, EXISTS), which must not make a key look recently used.
+    fn find_read(&mut self, key: &[u8], touch: bool) -> (u64, Option<usize>) {
+        let h = self.store().hash(key);
+        let (now, lru) = (self.now, self.lru);
+        let hasher = self.sh.store.hasher();
+        let mut fx = self.fx;
+        let s = self.shard(h);
+        let i = if touch { s.touch_lookup(h, key, now, lru, &mut fx, hasher) } else { s.lookup(h, key, now, &mut fx, hasher) };
+        self.fx = fx;
+        self.hit(i.is_some());
+        (h, i)
+    }
     fn value(&mut self, h: u64, i: usize) -> &[u8] {
         self.shard(h).slot(i).value()
     }
@@ -346,10 +377,9 @@ fn eq_ic(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// Executes one command and appends its reply to `out`.
-pub fn execute(tc: &mut ThreadCtx, conn: &mut ConnState, args: &Args, out: &mut Vec<u8>) {
-    let shared = tc.shared.clone();
+pub fn execute(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, args: &Args, out: &mut Vec<u8>) {
     let argv: Vec<&[u8]> = (0..args.len()).map(|i| args.get(i)).collect();
-    run_command(&shared, tc, conn, argv, out, false);
+    run_command(sh, tc, conn, argv, out, false);
 }
 
 fn unknown_command(argv: &[&[u8]]) -> String {
@@ -375,56 +405,106 @@ fn check_arity(spec: &Spec, argc: usize) -> bool {
     }
 }
 
-/// Validates, queues (inside MULTI) or runs a command. `in_exec` is true for
-/// commands replayed by EXEC, whose shards are already locked by the caller
-/// through `pre_locked`.
+/// Subcommands of container commands, with Valkey's arity for each, so that
+/// unknown subcommands and arity errors are reported (and flag a transaction)
+/// before execution, as `commandCheckExistence`/`commandCheckArity` do.
+fn subcommand_arity(cmd: &str, sub: &str) -> Option<i32> {
+    Some(match (cmd, sub) {
+        ("client", "id" | "getname" | "info") => 2,
+        ("client", "setname") => 3,
+        ("client", "setinfo") => 4,
+        ("client", "list") => -2,
+        ("command", "count") => 2,
+        ("command", "docs" | "info") => -2,
+        ("config", "get") => -3,
+        ("config", "set") => -4,
+        ("config", "resetstat") => 2,
+        ("function" | "script", "flush") => -2,
+        _ => return None,
+    })
+}
+
+/// Valkey's error for a rejected command; inside MULTI it also flags the
+/// transaction so that EXEC fails with EXECABORT.
+fn reject(tc: &ThreadCtx, conn: &mut ConnState, r: &mut Reply, msg: &str) {
+    r.error(msg);
+    Stats::add(&tc.stats().errors, 1);
+    if let Some(m) = conn.multi.as_mut() {
+        m.errored = true;
+    }
+}
+
+/// Validates, queues (inside MULTI) or runs a command, with checks in the
+/// order of Valkey's `processCommand`. `in_exec` is true for commands replayed
+/// by EXEC, whose shards are already locked by the caller.
 fn run_command<'s>(sh: &'s Shared, tc: &mut ThreadCtx, conn: &mut ConnState, argv: Vec<&[u8]>, out: &mut Vec<u8>, in_exec: bool) {
     Stats::add(&tc.stats().commands, 1);
     let mut r = Reply { out, resp3: conn.resp3 };
-    let Some(spec) = lookup(argv[0]) else {
-        r.error(&unknown_command(&argv));
-        Stats::add(&tc.stats().errors, 1);
-        if let Some(m) = conn.multi.as_mut() {
-            m.errored = true;
-        }
-        return;
+    let spec = lookup(argv[0]);
+    if !conn.authed && !spec.map(|s| s.flags & NOAUTH != 0).unwrap_or(false) {
+        return reject(tc, conn, &mut r, "NOAUTH Authentication required.");
+    }
+    let Some(spec) = spec else {
+        return reject(tc, conn, &mut r, &unknown_command(&argv));
     };
     if !check_arity(&spec, argv.len()) {
-        r.error(&format!("ERR wrong number of arguments for '{}' command", spec.name));
-        Stats::add(&tc.stats().errors, 1);
-        if let Some(m) = conn.multi.as_mut() {
-            m.errored = true;
-        }
-        return;
+        return reject(tc, conn, &mut r, &format!("ERR wrong number of arguments for '{}' command", spec.name));
     }
-    if !conn.authed && spec.flags & NOAUTH == 0 {
-        r.error("NOAUTH Authentication required.");
-        Stats::add(&tc.stats().errors, 1);
-        if let Some(m) = conn.multi.as_mut() {
-            m.errored = true;
+    if matches!(spec.name, "client" | "command" | "config" | "function" | "script") && argv.len() >= 2 {
+        let sub = lower(argv[1]);
+        match subcommand_arity(spec.name, &sub) {
+            None if !matches!(spec.name, "function" | "script") => {
+                let shown: String = String::from_utf8_lossy(argv[1]).chars().take(128).collect();
+                let msg = format!("ERR unknown subcommand '{}'. Try {} HELP.", shown, spec.name.to_uppercase());
+                return reject(tc, conn, &mut r, &msg);
+            }
+            Some(a) if !(if a > 0 { argv.len() == a as usize } else { argv.len() >= (-a) as usize }) => {
+                let msg = format!("ERR wrong number of arguments for '{}|{}' command", spec.name, sub);
+                return reject(tc, conn, &mut r, &msg);
+            }
+            _ => {}
         }
-        return;
     }
-    if let Some(m) = conn.multi.as_mut() {
-        if spec.flags & NOMULTI != 0 && spec.name != "exec" && spec.name != "discard" {
-            m.errored = true;
-            r.error(&format!("ERR Command '{}' not allowed inside a transaction", spec.name));
+    if spec.name == "debug" && !sh.cfg.enable_debug {
+        return reject(
+            tc,
+            conn,
+            &mut r,
+            "ERR DEBUG command not allowed. If the enable-debug-command option is set to \"local\", you can run it from a local connection, otherwise you need to set this option in the configuration file, and then restart the server.",
+        );
+    }
+    if conn.multi.is_some() && spec.flags & NOMULTI != 0 && spec.name != "exec" && spec.name != "discard" {
+        return reject(tc, conn, &mut r, &format!("ERR Command '{}' not allowed inside a transaction", spec.name));
+    }
+    // EXEC is subject to the memory check when it would run a DENYOOM command.
+    let denyoom = spec.flags & DENYOOM != 0 || (spec.name == "exec" && conn.multi.as_ref().map(|m| m.denyoom).unwrap_or(false));
+    if denyoom && !in_exec && !make_room(sh, tc) {
+        const OOM: &str = "OOM command not allowed when used memory > 'maxmemory'.";
+        if spec.name == "exec" {
+            conn.multi = None;
+            unwatch_all(&sh.store, conn);
+            r.error(&format!("EXECABORT Transaction discarded because of: {OOM}"));
             Stats::add(&tc.stats().errors, 1);
             return;
         }
+        return reject(tc, conn, &mut r, OOM);
+    }
+    if let Some(m) = conn.multi.as_mut() {
         if !matches!(spec.name, "exec" | "discard" | "quit" | "reset") {
+            m.bytes += argv.iter().map(|a| a.len()).sum::<usize>();
+            if m.bytes > sh.cfg.client_query_buffer_limit {
+                // Valkey closes a client whose queued transaction exceeds the limit.
+                conn.kill = true;
+                return;
+            }
+            m.denyoom |= spec.flags & DENYOOM != 0;
             m.queued.push(argv.iter().map(|a| a.to_vec()).collect());
             r.simple(b"QUEUED");
             return;
         }
     }
-    if spec.flags & DENYOOM != 0 && !in_exec && !make_room(sh, tc) {
-        r.error("OOM command not allowed when used memory > 'maxmemory'.");
-        Stats::add(&tc.stats().errors, 1);
-        return;
-    }
     if spec.name == "exec" {
-        exec_transaction(sh, tc, conn, r);
+        exec_transaction(sh, tc, conn, r, argv.len());
         return;
     }
     let locks = lock_for(sh, tc, &spec, &argv);
@@ -525,6 +605,7 @@ fn make_room(sh: &Shared, tc: &mut ThreadCtx) -> bool {
     let now = now_ms();
     let lru_now = (now / 1000) as u32;
     let mut evicted = 0u64;
+    let mut progress = false;
     let mut fits = false;
     // Bounded work per command, like Valkey's eviction time limit.
     for _ in 0..64 {
@@ -532,16 +613,25 @@ fn make_room(sh: &Shared, tc: &mut ThreadCtx) -> bool {
             fits = true;
             break;
         }
-        if !evict_one(sh, tc, policy, lru_now) {
-            break;
+        match evict_one(sh, tc, policy, lru_now) {
+            Freed::Evicted => evicted += 1,
+            Freed::Expired => progress = true,
+            Freed::Nothing => break,
         }
-        evicted += 1;
     }
     Stats::add(&tc.stats().evicted, evicted);
-    fits || evicted > 0
+    fits || evicted > 0 || progress
 }
 
-fn evict_one(sh: &Shared, tc: &mut ThreadCtx, policy: Policy, lru_now: u32) -> bool {
+/// What one eviction attempt freed.
+#[derive(PartialEq, Eq)]
+enum Freed {
+    Evicted,
+    Expired,
+    Nothing,
+}
+
+fn evict_one(sh: &Shared, tc: &mut ThreadCtx, policy: Policy, lru_now: u32) -> Freed {
     let samples = sh.cfg.maxmemory_samples.max(1);
     let hasher = sh.store.hasher();
     for _ in 0..NSHARDS {
@@ -552,15 +642,17 @@ fn evict_one(sh: &Shared, tc: &mut ThreadCtx, policy: Policy, lru_now: u32) -> b
         }
         let mut rng = tc.next_rand();
         if policy == Policy::AllKeysRandom {
-            let i = g.sample(1, &mut rng).next().unwrap();
+            let Some(&i) = g.sample(1, &mut rng).first() else {
+                continue;
+            };
             let key = g.slot(i).key().to_vec();
             let h = sh.store.hash(&key);
             g.remove_at(i, h, hasher);
             sh.store.publish_mem(s, &g);
-            return true;
+            return Freed::Evicted;
         }
         // Approximated LRU with a persistent candidate pool, as in evict.c.
-        let picks: Vec<usize> = g.sample(samples, &mut rng).collect();
+        let picks = g.sample(samples, &mut rng);
         for i in picks {
             let slot = g.slot(i);
             let idle = lru_now.wrapping_sub(slot.lru);
@@ -579,13 +671,21 @@ fn evict_one(sh: &Shared, tc: &mut ThreadCtx, policy: Policy, lru_now: u32) -> b
             let h = sh.store.hash(&best.key);
             let mut g = sh.store.lock(best.shard);
             let mut fx = Effects::default();
-            if g.delete(h, &best.key, now_ms(), &mut fx, hasher) {
+            let deleted = g.delete(h, &best.key, now_ms(), &mut fx, hasher);
+            if deleted || fx.expired > 0 {
                 sh.store.publish_mem(best.shard, &g);
-                return true;
+                drop(g);
+                if deleted {
+                    return Freed::Evicted;
+                }
+                // The candidate expired after it was sampled and the lookup
+                // removed it: memory was freed, but by expiry, not eviction.
+                Stats::add(&tc.stats().expired, fx.expired);
+                return Freed::Expired;
             }
         }
     }
-    false
+    Freed::Nothing
 }
 
 /// Periodic work: active expiry over this thread's shards and the memory
@@ -595,7 +695,7 @@ pub fn cron(tc: &mut ThreadCtx) {
     let start = std::time::Instant::now();
     // Valkey's slow cycle may use up to 25% of a tick (25 ms at hz 10).
     let limit = std::time::Duration::from_micros(250_000 / sh.cfg.hz.max(1) as u64);
-    if tc.active_expire && sh.shutdown.load(Ordering::Relaxed) == false {
+    if sh.active_expire.load(Ordering::Relaxed) && !sh.shutdown.load(Ordering::Relaxed) {
         let now = now_ms();
         let nthreads = sh.cfg.threads;
         let hasher = sh.store.hasher();
@@ -626,8 +726,7 @@ pub fn cron(tc: &mut ThreadCtx) {
 
 fn cmd_get(cx: &mut Cx) {
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
-    cx.hit(i.is_some());
+    let (h, i) = cx.find_read(key, true);
     match i {
         Some(i) => cx.reply_value(h, i),
         None => cx.r.null(),
@@ -747,6 +846,8 @@ fn set_generic(cx: &mut Cx, flags: u32, val_idx: usize, expire: Option<&[u8]>, c
     let val = cx.arg(val_idx);
     let (h, i) = cx.find(key);
     if flags & GET != 0 {
+        // `getGenericCommand` is a read lookup and counts a hit or miss.
+        cx.hit(i.is_some());
         match i {
             Some(i) => cx.reply_value(h, i),
             None => cx.r.null(),
@@ -812,8 +913,7 @@ fn finish_set(cx: &mut Cx, flags: u32, key: &[u8], val: &[u8], h: u64, existing:
 }
 
 fn cmd_set(cx: &mut Cx) {
-    let argv = cx.argv.clone();
-    let Some(o) = parse_ext(&argv, 3, OptKind::Set) else {
+    let Some(o) = parse_ext(&cx.argv, 3, OptKind::Set) else {
         return cx.syntax_err();
     };
     set_generic(cx, o.flags, 2, o.expire, o.compare, None, None);
@@ -838,8 +938,7 @@ fn cmd_getset(cx: &mut Cx) {
 }
 
 fn cmd_getex(cx: &mut Cx) {
-    let argv = cx.argv.clone();
-    let Some(o) = parse_ext(&argv, 2, OptKind::Get) else {
+    let Some(o) = parse_ext(&cx.argv, 2, OptKind::Get) else {
         return cx.syntax_err();
     };
     let mut when = 0;
@@ -850,8 +949,7 @@ fn cmd_getex(cx: &mut Cx) {
         }
     }
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
-    cx.hit(i.is_some());
+    let (h, i) = cx.find_read(key, true);
     let Some(i) = i else {
         return cx.r.null();
     };
@@ -871,8 +969,7 @@ fn cmd_getex(cx: &mut Cx) {
 
 fn cmd_getdel(cx: &mut Cx) {
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
-    cx.hit(i.is_some());
+    let (h, i) = cx.find_read(key, true);
     match i {
         Some(i) => {
             cx.reply_value(h, i);
@@ -887,8 +984,7 @@ fn cmd_mget(cx: &mut Cx) {
     cx.r.array(n);
     for j in 1..=n {
         let key = cx.arg(j);
-        let (h, i) = cx.find(key);
-        cx.hit(i.is_some());
+        let (h, i) = cx.find_read(key, true);
         match i {
             Some(i) => cx.reply_value(h, i),
             None => cx.r.null(),
@@ -966,7 +1062,7 @@ fn cmd_append(cx: &mut Cx) {
 
 fn cmd_strlen(cx: &mut Cx) {
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
+    let (h, i) = cx.find_read(key, true);
     let n = i.map(|i| cx.value(h, i).len()).unwrap_or(0);
     cx.r.int(n as i64);
 }
@@ -1083,12 +1179,11 @@ fn cmd_getrange(cx: &mut Cx) {
         return cx.not_int();
     };
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
+    let (h, i) = cx.find_read(key, true);
     let Some(i) = i else {
         return cx.r.bulk(b"");
     };
-    let v = cx.value(h, i).to_vec();
-    let len = v.len() as i64;
+    let len = cx.value(h, i).len() as i64;
     if start < 0 && end < 0 && start > end {
         return cx.r.bulk(b"");
     }
@@ -1106,7 +1201,14 @@ fn cmd_getrange(cx: &mut Cx) {
     if len == 0 || start > end {
         return cx.r.bulk(b"");
     }
-    cx.r.bulk(&v[start as usize..=end as usize]);
+    let want = Store::shard_of(h);
+    let Cx { locks, r, .. } = cx;
+    let shard: &Shard = match locks {
+        Locks::One(s, g) if *s == want => g,
+        Locks::Many(v) => &v.iter().find(|(s, _)| *s == want).expect("shard not locked").1,
+        _ => panic!("shard {want} not locked"),
+    };
+    r.bulk(&shard.slot(i).value()[start as usize..=end as usize]);
 }
 
 fn cmd_setrange(cx: &mut Cx) {
@@ -1168,7 +1270,7 @@ fn cmd_exists(cx: &mut Cx) {
     let mut n = 0;
     for j in 1..cx.argc() {
         let key = cx.arg(j);
-        if cx.find(key).1.is_some() {
+        if cx.find_read(key, false).1.is_some() {
             n += 1;
         }
     }
@@ -1177,7 +1279,7 @@ fn cmd_exists(cx: &mut Cx) {
 
 fn cmd_type(cx: &mut Cx) {
     let key = cx.arg(1);
-    let found = cx.find(key).1.is_some();
+    let found = cx.find_read(key, false).1.is_some();
     cx.r.simple(if found { b"string" } else { b"none" });
 }
 
@@ -1266,7 +1368,7 @@ fn cmd_pexpireat(cx: &mut Cx) {
 
 fn ttl_generic(cx: &mut Cx, ms: bool, abs: bool) {
     let key = cx.arg(1);
-    let (h, i) = cx.find(key);
+    let (h, i) = cx.find_read(key, false);
     let Some(i) = i else {
         return cx.r.int(-2);
     };
@@ -1288,14 +1390,8 @@ fn cmd_pttl(cx: &mut Cx) {
     ttl_generic(cx, true, false)
 }
 fn cmd_expiretime(cx: &mut Cx) {
-    // EXPIRETIME reports whole seconds (ms / 1000), unlike TTL's rounding.
-    let key = cx.arg(1);
-    let (h, i) = cx.find(key);
-    let Some(i) = i else {
-        return cx.r.int(-2);
-    };
-    let exp = cx.shard(h).slot(i).expire;
-    cx.r.int(if exp == 0 { -1 } else { exp as i64 / 1000 });
+    // ttlGenericCommand(c, 0, 1): the absolute time, rounded like TTL.
+    ttl_generic(cx, false, true)
 }
 fn cmd_pexpiretime(cx: &mut Cx) {
     ttl_generic(cx, true, true)
@@ -1353,6 +1449,9 @@ fn cmd_renamenx(cx: &mut Cx) {
 
 /// `stringmatchlen` glob: * ? [set] [^set] [a-z] and backslash escapes.
 pub fn glob_match(pat: &[u8], s: &[u8], nocase: bool) -> bool {
+    // stringmatchlen gives up (no match) past 1000 nested '*' recursions;
+    // the nesting depth is the number of star groups passed on the way.
+    let mut stars = 0usize;
     fn eq(a: u8, b: u8, nocase: bool) -> bool {
         if nocase {
             a.eq_ignore_ascii_case(&b)
@@ -1368,6 +1467,12 @@ pub fn glob_match(pat: &[u8], s: &[u8], nocase: bool) -> bool {
                 b'*' => {
                     while p + 1 < pat.len() && pat[p + 1] == b'*' {
                         p += 1;
+                    }
+                    if star.map(|(sp, _)| sp != p).unwrap_or(true) {
+                        stars += 1;
+                        if stars > 1000 {
+                            return false;
+                        }
                     }
                     star = Some((p, i));
                     p += 1;
@@ -1411,7 +1516,8 @@ pub fn glob_match(pat: &[u8], s: &[u8], nocase: bool) -> bool {
                         matched = !matched;
                     }
                     if matched {
-                        p = q + 1;
+                        // An unterminated class runs to the end of the pattern.
+                        p = (q + 1).min(pat.len());
                         i += 1;
                         continue;
                     }
@@ -1452,9 +1558,8 @@ fn cmd_keys(cx: &mut Cx) {
     let now = cx.now;
     let mut out: Vec<Vec<u8>> = Vec::new();
     for (_, g) in cx.all_shards().iter() {
-        for i in 0..g.len() {
-            let s = g.slot(i);
-            if s.expire != 0 && s.expire <= now {
+        for s in g.iter() {
+            if s.expire != 0 && s.expire < now {
                 continue;
             }
             if glob_match(pat, s.key(), false) {
@@ -1468,34 +1573,56 @@ fn cmd_keys(cx: &mut Cx) {
     }
 }
 
+/// `dbRandomKey`: sampled keys that turn out to be expired are deleted, so
+/// repeated calls make progress and a live key is returned whenever one exists.
 fn cmd_randomkey(cx: &mut Cx) {
     let now = cx.now;
+    let hasher = cx.sh.store.hasher();
     let mut rng = cx.tc.next_rand();
-    let total: usize = cx.all_shards().iter().map(|(_, g)| g.len()).sum();
-    if total == 0 {
-        return cx.r.null();
-    }
+    let mut expired = 0;
     for _ in 0..100 {
+        let total: usize = cx.all_shards().iter().map(|(_, g)| g.len()).sum();
+        if total == 0 {
+            break;
+        }
         rng ^= rng << 13;
         rng ^= rng >> 7;
         rng ^= rng << 17;
+        // Pick a shard in proportion to its size, then a random entry in it.
         let mut n = (rng % total as u64) as usize;
-        let mut pick = None;
-        for (_, g) in cx.all_shards().iter() {
-            if n < g.len() {
-                let s = g.slot(n);
-                if s.expire == 0 || s.expire > now {
-                    pick = Some(s.key().to_vec());
-                }
-                break;
+        let mut sub = rng.rotate_left(29);
+        for (_, g) in cx.all_shards().iter_mut() {
+            if n >= g.len() {
+                n -= g.len();
+                continue;
             }
-            n -= g.len();
-        }
-        if let Some(k) = pick {
-            return cx.r.bulk(&k);
+            let Some(&i) = g.sample(1, &mut sub).first() else {
+                break;
+            };
+            let s = g.slot(i);
+            if s.expire == 0 || s.expire >= now {
+                let k = s.key().to_vec();
+                cx.fx.expired += expired;
+                return cx.r.bulk(&k);
+            }
+            let h = hasher.hash_one(s.key());
+            g.remove_at(i, h, hasher);
+            expired += 1;
+            break;
         }
     }
-    cx.r.null();
+    cx.fx.expired += expired;
+    // Mostly-expired keyspace: fall back to a scan for any live key.
+    let live = cx
+        .all_shards()
+        .iter()
+        .flat_map(|(_, g)| g.iter())
+        .find(|s| s.expire == 0 || s.expire >= now)
+        .map(|s| s.key().to_vec());
+    match live {
+        Some(k) => cx.r.bulk(&k),
+        None => cx.r.null(),
+    }
 }
 
 fn cmd_dbsize(cx: &mut Cx) {
@@ -1507,8 +1634,9 @@ fn cmd_flushall(cx: &mut Cx) {
     if cx.argc() > 2 || (cx.argc() == 2 && !eq_ic(cx.arg(1), b"async") && !eq_ic(cx.arg(1), b"sync")) {
         return cx.syntax_err();
     }
+    let hasher = cx.sh.store.hasher();
     for (_, g) in cx.all_shards().iter_mut() {
-        g.clear();
+        g.clear(hasher);
     }
     cx.r.ok();
 }
@@ -1518,7 +1646,7 @@ fn cmd_flushall(cx: &mut Cx) {
 // ---------------------------------------------------------------------------
 
 fn cmd_multi(cx: &mut Cx) {
-    cx.conn.multi = Some(Multi { queued: Vec::new(), errored: false });
+    cx.conn.multi = Some(Multi { queued: Vec::new(), errored: false, bytes: 0, denyoom: false });
     cx.r.ok();
 }
 
@@ -1536,12 +1664,20 @@ fn cmd_exec(_cx: &mut Cx) {
 
 /// EXEC: locks every shard any queued command touches, in ascending order,
 /// then runs the queue. Other threads cannot observe a partial transaction.
-fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r: Reply) {
+fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r: Reply, argc: usize) {
     let Some(m) = conn.multi.take() else {
         r.error("ERR EXEC without MULTI");
         Stats::add(&tc.stats().errors, 1);
         return;
     };
+    if argc > 1 {
+        // This Valkey tree's EXEC accepts IFEQ/IFNE/NX/XX conditions; they
+        // are outside this proof of concept, so the transaction is discarded.
+        unwatch_all(&sh.store, conn);
+        r.error("ERR EXEC conditions are not supported by this proof of concept");
+        Stats::add(&tc.stats().errors, 1);
+        return;
+    }
     if m.errored {
         unwatch_all(&sh.store, conn);
         r.error("EXECABORT Transaction discarded because of previous errors.");
@@ -1549,7 +1685,7 @@ fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r
         return;
     }
     // Lock the shards of every queued command *and* of every watched key,
-    // then check the WATCH flag while holding them. Writers set the flag
+    // then check the WATCH state while holding them. Writers set the flag
     // under the shard lock, so no modification can slip in between the check
     // and the execution. (Checking before locking lost updates; found by
     // tests/concurrency.py watch_cas.)
@@ -1578,7 +1714,16 @@ fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r
     ids.sort_unstable();
     ids.dedup();
     let guards: Vec<(usize, MutexGuard<Shard>)> = ids.into_iter().map(|s| (s, sh.store.lock(s))).collect();
-    if conn.watch_flag.load(Ordering::Relaxed) {
+    // `isWatchedKeyExpired`: a key that was live when watched and has
+    // logically expired since aborts EXEC even if nothing deleted it yet.
+    let now = now_ms();
+    let dirty = conn.watch_flag.load(Ordering::Relaxed)
+        || conn.watched.iter().any(|key| {
+            let h = sh.store.hash(key);
+            let s = Store::shard_of(h);
+            guards.iter().find(|(i, _)| *i == s).map(|(_, g)| g.watched_key_expired(h, key, &conn.watch_flag, now)).unwrap_or(false)
+        });
+    if dirty {
         drop(guards);
         unwatch_all(&sh.store, conn);
         r.null_array();
@@ -1586,7 +1731,7 @@ fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r
     }
     r.array(m.queued.len());
     let out = r.out;
-    let resp3 = conn.resp3;
+    let mut resp3 = conn.resp3;
     let mut locks = Locks::Many(guards);
     for q in &m.queued {
         let argv: Vec<&[u8]> = q.iter().map(|a| a.as_slice()).collect();
@@ -1604,16 +1749,17 @@ fn exec_transaction(sh: &Shared, tc: &mut ThreadCtx, conn: &mut ConnState, mut r
             lru: (now / 1000) as u32,
             fx: Effects::default(),
         };
-        if spec.name == "exec" || spec.name == "multi" {
-            cx.err("ERR Command not allowed inside a transaction");
+        if spec.name == "unwatch" {
+            // EXEC unwatches every key when it finishes; unwatching here would
+            // lock shards this transaction already holds.
+            cx.r.ok();
         } else {
             (spec.run)(&mut cx);
         }
         finish(&mut cx);
         locks = std::mem::replace(&mut cx.locks, Locks::None);
-        if cx.conn.resp3 != resp3 {
-            // HELLO inside MULTI switches protocol for later replies.
-        }
+        // HELLO inside MULTI switches the protocol for the replies after it.
+        resp3 = cx.conn.resp3;
     }
     drop(locks);
     unwatch_all(&sh.store, conn);
@@ -1623,15 +1769,19 @@ fn cmd_watch(cx: &mut Cx) {
     if cx.conn.watch_flag.load(Ordering::Relaxed) {
         return cx.r.ok();
     }
+    let now = cx.now;
     for j in 1..cx.argc() {
         let key = cx.arg(j);
-        if cx.conn.watched.iter().any(|k| k == key) {
+        if cx.conn.watched.contains(key) {
             continue;
         }
         let h = cx.store().hash(key);
         let flag = cx.conn.watch_flag.clone();
-        cx.shard(h).watch(key, flag);
-        cx.conn.watched.push(key.to_vec());
+        let shard = cx.shard(h);
+        // `watchForKey` records whether the key is logically expired now.
+        let expired = shard.is_expired(h, key, now);
+        shard.watch(key, flag, expired);
+        cx.conn.watched.insert(key.into());
     }
     cx.r.ok();
 }
@@ -1686,9 +1836,20 @@ fn cmd_reset(cx: &mut Cx) {
     cx.r.simple(b"RESET");
 }
 
+/// Compares without returning early, so the time taken does not reveal how
+/// much of the password matched (Valkey compares SHA-256 digests in constant
+/// time). The loop length depends only on the longer input.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    let mut diff = (a.len() != b.len()) as u8;
+    for i in 0..a.len().max(b.len()) {
+        diff |= a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0);
+    }
+    std::hint::black_box(diff) == 0
+}
+
 fn check_password(cx: &Cx, user: Option<&[u8]>, pass: &[u8]) -> bool {
     match &cx.sh.cfg.requirepass {
-        Some(p) => user.map(|u| u == b"default").unwrap_or(true) && p.as_slice() == pass,
+        Some(p) => user.map(|u| u == b"default").unwrap_or(true) && ct_eq(p, pass),
         None => user.map(|u| u == b"default").unwrap_or(true),
     }
 }
@@ -1703,6 +1864,7 @@ fn cmd_auth(cx: &mut Cx) {
     let (user, pass) = if cx.argc() == 3 { (Some(cx.arg(1)), cx.arg(2)) } else { (None, cx.arg(1)) };
     if check_password(cx, user, pass) {
         cx.conn.authed = true;
+        cx.conn.ever_authed = true;
         cx.r.ok();
     } else {
         cx.err("WRONGPASS invalid username-password pair or user is disabled.");
@@ -1722,29 +1884,36 @@ fn cmd_hello(cx: &mut Cx) {
             return cx.err("NOPROTO unsupported protocol version");
         }
     }
-    let mut setname = None;
+    let (mut setname, mut auth) = (None, None);
     while j < cx.argc() {
         let opt = cx.arg(j);
         if eq_ic(opt, b"auth") && j + 2 < cx.argc() {
-            let (u, p) = (cx.arg(j + 1), cx.arg(j + 2));
-            if !check_password(cx, Some(u), p) {
-                return cx.err("WRONGPASS invalid username-password pair or user is disabled.");
-            }
-            cx.conn.authed = true;
+            auth = Some((cx.arg(j + 1), cx.arg(j + 2)));
             j += 3;
         } else if eq_ic(opt, b"setname") && j + 1 < cx.argc() {
-            setname = Some(cx.arg(j + 1).to_vec());
+            let n = cx.arg(j + 1);
+            if !valid_client_name(n) {
+                return cx.err("ERR Client names cannot contain spaces, newlines or special characters.");
+            }
+            setname = Some(n.to_vec());
             j += 2;
         } else {
             let msg = format!("ERR Syntax error in HELLO option '{}'", String::from_utf8_lossy(opt));
             return cx.err(&msg);
         }
     }
+    if let Some((u, p)) = auth {
+        if !check_password(cx, Some(u), p) {
+            return cx.err("WRONGPASS invalid username-password pair or user is disabled.");
+        }
+        cx.conn.authed = true;
+        cx.conn.ever_authed = true;
+    }
     if !cx.conn.authed {
         return cx.err("NOAUTH HELLO must be called with the client already authenticated, otherwise the HELLO <proto> AUTH <user> <pass> option can be used to authenticate the client and select the RESP protocol version at the same time");
     }
     if let Some(n) = setname {
-        cx.conn.name = Some(n);
+        cx.conn.name = if n.is_empty() { None } else { Some(n) };
     }
     cx.conn.resp3 = ver == 3;
     cx.r.resp3 = ver == 3;
@@ -1766,6 +1935,11 @@ fn cmd_hello(cx: &mut Cx) {
     cx.r.array(0);
 }
 
+/// `validateClientAttr`: printable ASCII without spaces (empty is allowed).
+fn valid_client_name(n: &[u8]) -> bool {
+    n.iter().all(|&b| b > b' ' && b <= b'~')
+}
+
 fn cmd_client(cx: &mut Cx) {
     let sub = lower(cx.arg(1));
     match (sub.as_str(), cx.argc()) {
@@ -1779,14 +1953,15 @@ fn cmd_client(cx: &mut Cx) {
         },
         ("setname", 3) => {
             let n = cx.arg(2);
-            if n.iter().any(|&b| b <= b' ' || b > b'~') {
+            if !valid_client_name(n) {
                 return cx.err("ERR Client names cannot contain spaces, newlines or special characters.");
             }
             cx.conn.name = if n.is_empty() { None } else { Some(n.to_vec()) };
             cx.r.ok()
         }
         ("setinfo", 4) => cx.r.ok(),
-        ("info", 2) | ("list", 2) => {
+        ("info", 2) | ("list", _) => {
+            // Only this connection is listed (FEATURE_MATRIX.md: partial).
             let line = format!(
                 "id={} addr=? name={} db=0 multi={} resp={} lib-name= lib-ver=\n",
                 cx.conn.id,
@@ -1879,17 +2054,24 @@ fn cmd_config(cx: &mut Cx) {
                 cx.r.bulk(v.as_bytes());
             }
         }
-        "set" if cx.argc() >= 4 && cx.argc() % 2 == 0 => {
+        "set" => {
+            if cx.argc() % 2 != 0 {
+                return cx.err("ERR wrong number of arguments for 'config|set' command");
+            }
+            // All-or-nothing like Valkey: validate every pair, then apply.
+            let (mut mem, mut pol) = (None, None);
             let mut j = 2;
             while j < cx.argc() {
                 let (k, v) = (lower(cx.arg(j)), cx.arg(j + 1));
                 let ok = match k.as_str() {
-                    "maxmemory" => std::str::from_utf8(v)
-                        .ok()
-                        .and_then(crate_parse_memory)
-                        .map(|m| cx.sh.maxmemory.store(m, Ordering::Relaxed))
-                        .is_some(),
-                    "maxmemory-policy" => Policy::parse(v).map(|p| *cx.sh.policy.write().unwrap() = p).is_some(),
+                    "maxmemory" => {
+                        mem = std::str::from_utf8(v).ok().and_then(crate::parse_memory);
+                        mem.is_some()
+                    }
+                    "maxmemory-policy" => {
+                        pol = Policy::parse(v);
+                        pol.is_some()
+                    }
                     "save" | "appendonly" => v.is_empty() || v == b"no",
                     _ => false,
                 };
@@ -1902,13 +2084,16 @@ fn cmd_config(cx: &mut Cx) {
                 }
                 j += 2;
             }
+            if let Some(m) = mem {
+                cx.sh.maxmemory.store(m, Ordering::Relaxed);
+            }
+            if let Some(p) = pol {
+                *cx.sh.policy.write().unwrap() = p;
+            }
             cx.r.ok();
         }
-        "resetstat" if cx.argc() == 2 => {
-            cx.sh.reset_epoch.fetch_add(1, Ordering::Relaxed);
-            // The calling thread's counters reset immediately; others at their
-            // next loop iteration.
-            cx.tc.stats().reset();
+        "resetstat" => {
+            *cx.sh.stats_base.lock().unwrap() = stat_totals(cx.sh);
             cx.r.ok();
         }
         _ => {
@@ -1916,16 +2101,6 @@ fn cmd_config(cx: &mut Cx) {
             cx.err(&msg);
         }
     }
-}
-
-fn crate_parse_memory(s: &str) -> Option<usize> {
-    let s = s.trim().to_ascii_lowercase();
-    for (suf, mul) in [("gb", 1usize << 30), ("mb", 1 << 20), ("kb", 1 << 10)] {
-        if let Some(n) = s.strip_suffix(suf) {
-            return n.parse::<usize>().ok().map(|v| v * mul);
-        }
-    }
-    s.parse().ok()
 }
 
 fn rss_bytes() -> usize {
@@ -1936,29 +2111,29 @@ fn rss_bytes() -> usize {
         .unwrap_or(0)
 }
 
-fn cmd_info(cx: &mut Cx) {
-    let sh = cx.sh;
+fn stat_totals(sh: &Shared) -> [u64; 10] {
     let mut tot = [0u64; 10];
     for s in &sh.stats {
-        for (k, c) in [
-            &s.commands, &s.net_in, &s.net_out, &s.hits, &s.misses, &s.expired, &s.evicted, &s.errors, &s.conns_received,
-            &s.rejected,
-        ]
-        .iter()
-        .enumerate()
-        {
-            tot[k] += c.load(Ordering::Relaxed);
+        for (t, v) in tot.iter_mut().zip(s.values()) {
+            *t += v;
         }
+    }
+    tot
+}
+
+fn cmd_info(cx: &mut Cx) {
+    let sh = cx.sh;
+    let base = *sh.stats_base.lock().unwrap();
+    let mut tot = stat_totals(sh);
+    for (t, b) in tot.iter_mut().zip(base) {
+        *t = t.saturating_sub(b);
     }
     let _ = tikv_jemalloc_ctl::epoch::advance();
     let allocated = tikv_jemalloc_ctl::stats::allocated::read().unwrap_or(0);
     let rss = rss_bytes();
-    let (mut keys, mut volatile) = (0usize, 0usize);
-    for i in 0..NSHARDS {
-        let g = sh.store.lock(i);
-        keys += g.len();
-        volatile += g.volatile();
-    }
+    // Published counters, not shard locks: INFO may run inside EXEC, which
+    // already holds some shards.
+    let (keys, volatile) = sh.store.key_counts();
     let up = sh.started.elapsed().as_secs();
     let wanted: Vec<String> = (1..cx.argc()).map(|j| lower(cx.arg(j))).collect();
     let all = wanted.is_empty() || wanted.iter().any(|w| matches!(w.as_str(), "all" | "everything" | "default"));
@@ -2022,14 +2197,15 @@ fn cmd_debug(cx: &mut Cx) {
     let sub = lower(cx.arg(1));
     match sub.as_str() {
         "set-active-expire" if cx.argc() == 3 => {
-            // Applies to the calling worker only; with --threads 1 this
-            // matches Valkey. Documented as partial in FEATURE_MATRIX.md.
-            cx.tc.active_expire = cx.arg(2) != b"0";
+            cx.sh.active_expire.store(cx.arg(2) != b"0", Ordering::Relaxed);
             cx.r.ok();
         }
         "sleep" if cx.argc() == 3 => {
+            // strtod semantics: unparsable means 0. Non-finite or negative
+            // values would make Duration panic (and abort the process).
             let secs: f64 = std::str::from_utf8(cx.arg(2)).ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            std::thread::sleep(std::time::Duration::from_secs_f64(secs.max(0.0)));
+            let secs = if secs.is_finite() { secs.clamp(0.0, 86_400.0) } else { 0.0 };
+            std::thread::sleep(std::time::Duration::from_secs_f64(secs));
             cx.r.ok();
         }
         _ => {
@@ -2052,10 +2228,36 @@ fn cmd_function_script(cx: &mut Cx) {
     cx.err(&msg)
 }
 
+/// SHUTDOWN [NOSAVE | SAVE] [NOW] [FORCE] [SAFE] [FAILOVER] | ABORT, parsed
+/// like Valkey. There is no persistence, so SAVE is refused rather than
+/// exiting without the save it asks for. On success there is no reply: the
+/// process exits.
 fn cmd_shutdown(cx: &mut Cx) {
+    let (mut abort, mut save, mut nosave, mut failover, mut other) = (false, false, false, false, false);
+    for j in 1..cx.argc() {
+        match lower(cx.arg(j)).as_str() {
+            "nosave" => nosave = true,
+            "save" => save = true,
+            "now" | "force" | "safe" => other = true,
+            "failover" => failover = true,
+            "abort" => abort = true,
+            _ => return cx.syntax_err(),
+        }
+    }
+    if (abort && (save || nosave || failover || other)) || (save && nosave) {
+        return cx.syntax_err();
+    }
+    if failover {
+        return cx.err("ERR SHUTDOWN FAILOVER is only supported in cluster mode.");
+    }
+    if abort {
+        return cx.err("ERR No shutdown in progress.");
+    }
+    if save {
+        return cx.err("ERR SHUTDOWN SAVE is not supported: this proof of concept has no persistence");
+    }
     cx.tc.shutdown_requested = true;
     cx.conn.close_after_reply = true;
-    cx.r.ok();
 }
 
 #[cfg(test)]

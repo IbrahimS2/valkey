@@ -1,28 +1,28 @@
 Cleanup: may take some time... OK
 Starting test server at port 21079
-[ready]: 8730
+[ready]: 14367
 Testing unit/protocol
 [ok]: Handle an empty query (0 ms)
 [ok]: Handle an empty query in pipeline (0 ms)
 [ok]: Negative multibulk length (0 ms)
 [ok]: Negative multibulk length in pipeline (0 ms)
 [ok]: Out of range multibulk length (1 ms)
-[ok]: Wrong multibulk payload header (1 ms)
+[ok]: Wrong multibulk payload header (0 ms)
 [ok]: Negative multibulk payload length (0 ms)
-[ok]: Out of range multibulk payload length (0 ms)
-[ok]: Non-number multibulk payload length (0 ms)
-[ok]: Multi bulk request not followed by bulk arguments (0 ms)
+[ok]: Out of range multibulk payload length (1 ms)
+[ok]: Non-number multibulk payload length (1 ms)
+[ok]: Multi bulk request not followed by bulk arguments (1 ms)
 [ok]: Generic wrong number of args (1 ms)
 [ok]: Mixing quoted and unquoted strings (0 ms)
 [ok]: Unbalanced single quotes (0 ms)
 [ok]: Unbalanced double quotes (1 ms)
-[ok]: Inline command with an embedded NUL byte is rejected (0 ms)
-[ok]: Inline command with a quoted \x00 escape still works (0 ms)
+[ok]: Inline command with an embedded NUL byte is rejected (1 ms)
+[ok]: Inline command with a quoted \x00 escape still works (1 ms)
 [ok]: Check CRLF when parsing the querybuf (8 ms)
 [ok]: Protocol desync regression test #1 (1 ms)
-[ok]: Protocol desync regression test #2 (0 ms)
-[ok]: Protocol desync regression test #3 (0 ms)
-[ok]: Protocol desync regression test #4 (1 ms)
+[ok]: Protocol desync regression test #2 (1 ms)
+[ok]: Protocol desync regression test #3 (43 ms)
+[ok]: Protocol desync regression test #4 (43 ms)
 [err]: raw protocol response in tests/unit/protocol.tcl
 Expected '*-1' to equal or match '-ERR unknown command 'srandmember', with args beginning with: 'nonexisting_key''
 [err]: raw protocol response - deferred in tests/unit/protocol.tcl

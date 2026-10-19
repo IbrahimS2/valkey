@@ -1,53 +1,53 @@
 Cleanup: may take some time... OK
 Starting test server at port 21079
-[ready]: 8495
+[ready]: 14133
 Testing unit/keyspace
 [ok]: DEL against a single item (1 ms)
-[ok]: Vararg DEL (0 ms)
-[ok]: Untagged multi-key commands (0 ms)
+[ok]: Vararg DEL (1 ms)
+[ok]: Untagged multi-key commands (1 ms)
 [ok]: KEYS with pattern (1 ms)
 [ok]: KEYS to get all keys (0 ms)
 [ok]: DBSIZE (0 ms)
 [ok]: KEYS with hashtag (1 ms)
 [ok]: DEL all keys (1 ms)
 [ok]: KEYS with empty DB (0 ms)
-[ok]: DEL against expired key (1102 ms)
+[ok]: DEL against expired key (1101 ms)
 [ok]: EXISTS (1 ms)
-[ok]: Zero length value in key. SET/GET/EXISTS (1 ms)
+[ok]: Zero length value in key. SET/GET/EXISTS (0 ms)
 [ok]: Commands pipelining (0 ms)
 [ok]: Non existing command (0 ms)
 [ok]: RENAME basic usage (0 ms)
 [ok]: RENAME source key should no longer exist (0 ms)
-[ok]: RENAME against already existing key (0 ms)
+[ok]: RENAME against already existing key (1 ms)
 [ok]: RENAMENX basic usage (1 ms)
 [ok]: RENAMENX against already existing key (0 ms)
-[ok]: RENAMENX against already existing key (2) (0 ms)
-[ok]: RENAME against nonexistent source key (0 ms)
-[ok]: RENAME where source and dest key are the same (existing) (0 ms)
+[ok]: RENAMENX against already existing key (2) (1 ms)
+[ok]: RENAME against nonexistent source key (1 ms)
+[ok]: RENAME where source and dest key are the same (existing) (1 ms)
 [ok]: RENAMENX where source and dest key are the same (existing) (0 ms)
-[ok]: RENAME where source and dest key are the same (nonexistent) (1 ms)
-[ok]: RENAME with volatile key, should move the TTL as well (1 ms)
-[ok]: RENAME with volatile key, should not inherit TTL of target key (1 ms)
+[ok]: RENAME where source and dest key are the same (nonexistent) (0 ms)
+[ok]: RENAME with volatile key, should move the TTL as well (0 ms)
+[ok]: RENAME with volatile key, should not inherit TTL of target key (0 ms)
 [ok]: DEL all keys again (DB 0) (0 ms)
 [ignore]: DEL all keys again (DB 1): Not supported on singledb
-[ok]: COPY basic usage for string (0 ms)
+[ok]: COPY basic usage for string (1 ms)
 [ignore]: COPY for string does not replace an existing key without REPLACE option: Not supported on singledb
 [ignore]: COPY for string can replace an existing key with REPLACE option: Not supported on singledb
 [ignore]: COPY for string ensures that copied data is independent of copying data: Not supported on singledb
 [ok]: COPY for string does not copy data to no-integer DB (1 ms)
 [ok]: COPY can copy key expire metadata as well (1 ms)
 [ok]: COPY does not create an expire if it does not exist (1 ms)
-[ok]: COPY basic usage for list - quicklist (44 ms)
+[ok]: COPY basic usage for list - quicklist (47 ms)
 [ok]: COPY basic usage for list - listpack (1 ms)
 [ok]: COPY basic usage for $type set (1 ms)
 [ok]: COPY basic usage for $type set (1 ms)
-[ok]: COPY basic usage for $type set (17 ms)
-[ok]: COPY basic usage for listpack sorted set (1 ms)
+[ok]: COPY basic usage for $type set (18 ms)
+[ok]: COPY basic usage for listpack sorted set (0 ms)
 [ok]: COPY basic usage for skiplist sorted set (12 ms)
 [ok]: COPY basic usage for listpack hash (1 ms)
-[ok]: COPY basic usage for hashtable hash (14 ms)
-[ok]: COPY basic usage for stream (100 ms)
-[ok]: COPY basic usage for stream-cgroups (9 ms)
+[ok]: COPY basic usage for hashtable hash (9 ms)
+[ok]: COPY basic usage for stream (99 ms)
+[ok]: COPY basic usage for stream-cgroups (10 ms)
 [ignore]: MOVE basic usage: Not supported on singledb
 [ignore]: MOVE against key existing in the target DB: Not supported on singledb
 [ignore]: MOVE against non-integer DB (#1428): Not supported on singledb
@@ -61,20 +61,20 @@ Testing unit/keyspace
 [ignore]: MOVE REPLACE invalidates WATCH on destination key: Not supported on singledb
 [ignore]: SET/GET keys in different DBs: Not supported on singledb
 [ok]: RANDOMKEY (8 ms)
-[ok]: RANDOMKEY against empty DB (1 ms)
-[ok]: RANDOMKEY regression 1 (0 ms)
-[ok]: KEYS * two times with long key, Github issue #1208 (1 ms)
+[ok]: RANDOMKEY against empty DB (0 ms)
+[ok]: RANDOMKEY regression 1 (1 ms)
+[ok]: KEYS * two times with long key, Github issue #1208 (0 ms)
 [ok]: Regression for pattern matching long nested loops (0 ms)
 [ignore]: Coverage: basic SWAPDB test and unhappy path: Not supported on singledb
 [ignore]: Coverage: SWAPDB and FLUSHDB: Not supported on singledb
-[ok]: Regression for pattern matching very long nested loops (43 ms)
+[ok]: Regression for pattern matching very long nested loops (44 ms)
 [ignore]: Not supported on external server
-[1/1 done]: unit/keyspace (2 seconds)
+[1/1 done]: unit/keyspace (1 seconds)
 
                    The End
 
 Execution time of different units:
-  2 seconds - unit/keyspace
+  1 seconds - unit/keyspace
 
 Test Summary: 48 passed, 0 failed
 

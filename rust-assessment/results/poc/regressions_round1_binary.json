@@ -1,0 +1,295 @@
+[
+ {
+  "scenario": "info_in_exec",
+  "ok": false,
+  "valkey": {
+   "exec_len": 2,
+   "set": "OK",
+   "info_is_text": true,
+   "alive": true
+  },
+  "rvk": {
+   "exception": "TimeoutError('timed out')"
+  }
+ },
+ {
+  "scenario": "unwatch_in_exec",
+  "ok": false,
+  "valkey": {
+   "exec": [
+    "OK"
+   ],
+   "alive": true
+  },
+  "rvk": {
+   "exception": "TimeoutError('timed out')"
+  }
+ },
+ {
+  "scenario": "multi_oom_noeviction",
+  "ok": false,
+  "valkey": {
+   "plain": "OOM",
+   "queued": "OOM comma",
+   "exec": "EXECABORT"
+  },
+  "rvk": {
+   "plain": "OOM",
+   "queued": "QUEUED",
+   "exec": "['OK']"
+  }
+ },
+ {
+  "scenario": "debug_sleep_inf",
+  "ok": false,
+  "valkey": {
+   "ok_or_error": true,
+   "alive": true
+  },
+  "rvk": {
+   "exception": "RuntimeError('rvk did not start')"
+  }
+ },
+ {
+  "scenario": "expiretime_rounding",
+  "ok": false,
+  "valkey": {
+   "expiretime": 4102444801,
+   "pexpiretime": 4102444800600
+  },
+  "rvk": {
+   "expiretime": 4102444800,
+   "pexpiretime": 4102444800600
+  }
+ },
+ {
+  "scenario": "watch_lazy_expired",
+  "ok": false,
+  "valkey": {
+   "exec": null
+  },
+  "rvk": {
+   "exception": "RuntimeError('rvk did not start')"
+  }
+ },
+ {
+  "scenario": "watch_stale_keys",
+  "ok": false,
+  "valkey": {
+   "watch": [
+    "PONG"
+   ],
+   "delete": [
+    "PONG"
+   ],
+   "flushdb": [
+    "PONG"
+   ]
+  },
+  "rvk": {
+   "exception": "RuntimeError('rvk did not start')"
+  }
+ },
+ {
+  "scenario": "flush_nonexisting_watched",
+  "ok": false,
+  "valkey": {
+   "exec": [
+    "PONG"
+   ]
+  },
+  "rvk": {
+   "exec": null
+  }
+ },
+ {
+  "scenario": "half_close",
+  "ok": false,
+  "valkey": {
+   "reply": "+PONG\r\n",
+   "closed": true
+  },
+  "rvk": {
+   "reply": "+PONG\r\n",
+   "closed": false
+  }
+ },
+ {
+  "scenario": "exact_fill_then_close",
+  "ok": false,
+  "valkey": {
+   "len": 16384,
+   "exists": 100
+  },
+  "rvk": {
+   "len": 16384,
+   "exists": 0
+  }
+ },
+ {
+  "scenario": "shutdown_args",
+  "ok": false,
+  "valkey": {
+   "abort": "ERR No shutdown in progress.",
+   "typo": "ERR syntax error",
+   "in_multi": "ERR Command 'shutdown' not allowed inside a transaction",
+   "exec": "EXECABORT",
+   "alive": true
+  },
+  "rvk": {
+   "exception": "EOFError('connection closed')"
+  }
+ },
+ {
+  "scenario": "noauth_order",
+  "ok": false,
+  "valkey": {
+   "unknown": "NOAUTH Authentication required.",
+   "arity": "NOAUTH Authentication required.",
+   "known": "NOAUTH Authentication required."
+  },
+  "rvk": {
+   "unknown": "ERR unknown command 'foobar', with args beginning with: ",
+   "arity": "ERR wrong number of arguments for 'get' command",
+   "known": "NOAUTH Authentication required."
+  }
+ },
+ {
+  "scenario": "subcommand_in_multi",
+  "ok": false,
+  "valkey": {
+   "bad": "ERR unknown subcommand 'gett'. Try CONFIG HELP.",
+   "exec": "EXECABORT",
+   "k": null,
+   "arity": "ERR wrong number of arguments for 'config|get' command"
+  },
+  "rvk": {
+   "bad": "QUEUED",
+   "exec": "[\"ERR unk",
+   "k": "b'v'",
+   "arity": "ERR unknown subcommand 'get'. Try CONFIG HELP."
+  }
+ },
+ {
+  "scenario": "config_set_atomic",
+  "ok": false,
+  "valkey": {
+   "error": true,
+   "unchanged": [
+    "b'maxmemory'",
+    "b'0'"
+   ],
+   "units": "OK",
+   "100m": [
+    "b'maxmemory'",
+    "b'100000000'"
+   ]
+  },
+  "rvk": {
+   "error": true,
+   "unchanged": [
+    "b'maxmemory'",
+    "b'104857600'"
+   ],
+   "units": "ERR CONFIG SET failed (possibly related to argument 'maxmemory') - not supported by this proof of concept",
+   "100m": [
+    "b'maxmemory'",
+    "b'104857600'"
+   ]
+  }
+ },
+ {
+  "scenario": "hello_auth_order",
+  "ok": false,
+  "valkey": {
+   "hello": "ERR Syntax error in HELLO opti",
+   "still_noauth": "NOAUTH"
+  },
+  "rvk": {
+   "hello": "ERR Syntax error in HELLO opti",
+   "still_noauth": "None"
+  }
+ },
+ {
+  "scenario": "hello_setname",
+  "ok": false,
+  "valkey": {
+   "bad_name": "ERR Client names cannot contain spaces, newlines or special characters."
+  },
+  "rvk": {
+   "bad_name": "[b'server', b'rvk', b'version', b'0.1.0', b'proto', 2, b'id', 2, b'mode', b'standalone', b'role', b'master', b'modules', []]"
+  }
+ },
+ {
+  "scenario": "hello_in_multi",
+  "ok": false,
+  "valkey": {
+   "get_reply": "RESP3-null"
+  },
+  "rvk": {
+   "get_reply": null
+  }
+ },
+ {
+  "scenario": "keys_unterminated_class",
+  "ok": false,
+  "valkey": {
+   "keys": [
+    "b'a'"
+   ]
+  },
+  "rvk": {
+   "keys": []
+  }
+ },
+ {
+  "scenario": "protocol_error_text",
+  "ok": false,
+  "valkey": {
+   "reply": "-ERR Protocol error: expected '$', got ' '\r\n"
+  },
+  "rvk": {
+   "reply": "-ERR Protocol error: expected '$', got '\n'\r\n"
+  }
+ },
+ {
+  "scenario": "randomkey_mostly_expired",
+  "ok": false,
+  "valkey": {
+   "randomkey": [
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'"
+   ]
+  },
+  "rvk": {
+   "exception": "RuntimeError('rvk did not start')"
+  }
+ },
+ {
+  "scenario": "backpressure",
+  "ok": true,
+  "valkey": {
+   "replies": 200,
+   "alive": true
+  },
+  "rvk": {
+   "replies": 200,
+   "alive": true
+  }
+ },
+ {
+  "scenario": "multi_queue_limit",
+  "ok": false,
+  "valkey": {
+   "closed": true,
+   "alive": true
+  },
+  "rvk": {
+   "closed": false,
+   "alive": true
+  }
+ }
+]

@@ -1,0 +1,324 @@
+[
+ {
+  "scenario": "info_in_exec",
+  "ok": true,
+  "valkey": {
+   "exec_len": 2,
+   "set": "OK",
+   "info_is_text": true,
+   "alive": true
+  },
+  "rvk": {
+   "exec_len": 2,
+   "set": "OK",
+   "info_is_text": true,
+   "alive": true
+  }
+ },
+ {
+  "scenario": "unwatch_in_exec",
+  "ok": true,
+  "valkey": {
+   "exec": [
+    "OK"
+   ],
+   "alive": true
+  },
+  "rvk": {
+   "exec": [
+    "OK"
+   ],
+   "alive": true
+  }
+ },
+ {
+  "scenario": "multi_oom_noeviction",
+  "ok": true,
+  "valkey": {
+   "plain": "OOM",
+   "queued": "OOM comma",
+   "exec": "EXECABORT"
+  },
+  "rvk": {
+   "plain": "OOM",
+   "queued": "OOM comma",
+   "exec": "EXECABORT"
+  }
+ },
+ {
+  "scenario": "debug_sleep_inf",
+  "ok": true,
+  "valkey": {
+   "ok_or_error": true,
+   "alive": true
+  },
+  "rvk": {
+   "ok_or_error": true,
+   "alive": true
+  }
+ },
+ {
+  "scenario": "expiretime_rounding",
+  "ok": true,
+  "valkey": {
+   "expiretime": 4102444801,
+   "pexpiretime": 4102444800600
+  },
+  "rvk": {
+   "expiretime": 4102444801,
+   "pexpiretime": 4102444800600
+  }
+ },
+ {
+  "scenario": "watch_lazy_expired",
+  "ok": true,
+  "valkey": {
+   "exec": null
+  },
+  "rvk": {
+   "exec": null
+  }
+ },
+ {
+  "scenario": "watch_stale_keys",
+  "ok": true,
+  "valkey": {
+   "watch": [
+    "PONG"
+   ],
+   "delete": [
+    "PONG"
+   ],
+   "flushdb": [
+    "PONG"
+   ]
+  },
+  "rvk": {
+   "watch": [
+    "PONG"
+   ],
+   "delete": [
+    "PONG"
+   ],
+   "flushdb": [
+    "PONG"
+   ]
+  }
+ },
+ {
+  "scenario": "flush_nonexisting_watched",
+  "ok": true,
+  "valkey": {
+   "exec": [
+    "PONG"
+   ]
+  },
+  "rvk": {
+   "exec": [
+    "PONG"
+   ]
+  }
+ },
+ {
+  "scenario": "half_close",
+  "ok": true,
+  "valkey": {
+   "reply": "+PONG\r\n",
+   "closed": true
+  },
+  "rvk": {
+   "reply": "+PONG\r\n",
+   "closed": true
+  }
+ },
+ {
+  "scenario": "exact_fill_then_close",
+  "ok": true,
+  "valkey": {
+   "len": 16384,
+   "exists": 100
+  },
+  "rvk": {
+   "len": 16384,
+   "exists": 100
+  }
+ },
+ {
+  "scenario": "shutdown_args",
+  "ok": true,
+  "valkey": {
+   "abort": "ERR No shutdown in progress.",
+   "typo": "ERR syntax error",
+   "in_multi": "ERR Command 'shutdown' not allowed inside a transaction",
+   "exec": "EXECABORT",
+   "alive": true
+  },
+  "rvk": {
+   "abort": "ERR No shutdown in progress.",
+   "typo": "ERR syntax error",
+   "in_multi": "ERR Command 'shutdown' not allowed inside a transaction",
+   "exec": "EXECABORT",
+   "alive": true
+  }
+ },
+ {
+  "scenario": "noauth_order",
+  "ok": true,
+  "valkey": {
+   "unknown": "NOAUTH Authentication required.",
+   "arity": "NOAUTH Authentication required.",
+   "known": "NOAUTH Authentication required."
+  },
+  "rvk": {
+   "unknown": "NOAUTH Authentication required.",
+   "arity": "NOAUTH Authentication required.",
+   "known": "NOAUTH Authentication required."
+  }
+ },
+ {
+  "scenario": "subcommand_in_multi",
+  "ok": true,
+  "valkey": {
+   "bad": "ERR unknown subcommand 'gett'. Try CONFIG HELP.",
+   "exec": "EXECABORT",
+   "k": null,
+   "arity": "ERR wrong number of arguments for 'config|get' command"
+  },
+  "rvk": {
+   "bad": "ERR unknown subcommand 'gett'. Try CONFIG HELP.",
+   "exec": "EXECABORT",
+   "k": null,
+   "arity": "ERR wrong number of arguments for 'config|get' command"
+  }
+ },
+ {
+  "scenario": "config_set_atomic",
+  "ok": true,
+  "valkey": {
+   "error": true,
+   "unchanged": [
+    "b'maxmemory'",
+    "b'0'"
+   ],
+   "units": "OK",
+   "100m": [
+    "b'maxmemory'",
+    "b'100000000'"
+   ]
+  },
+  "rvk": {
+   "error": true,
+   "unchanged": [
+    "b'maxmemory'",
+    "b'0'"
+   ],
+   "units": "OK",
+   "100m": [
+    "b'maxmemory'",
+    "b'100000000'"
+   ]
+  }
+ },
+ {
+  "scenario": "hello_auth_order",
+  "ok": true,
+  "valkey": {
+   "hello": "ERR Syntax error in HELLO opti",
+   "still_noauth": "NOAUTH"
+  },
+  "rvk": {
+   "hello": "ERR Syntax error in HELLO opti",
+   "still_noauth": "NOAUTH"
+  }
+ },
+ {
+  "scenario": "hello_setname",
+  "ok": true,
+  "valkey": {
+   "bad_name": "ERR Client names cannot contain spaces, newlines or special characters."
+  },
+  "rvk": {
+   "bad_name": "ERR Client names cannot contain spaces, newlines or special characters."
+  }
+ },
+ {
+  "scenario": "hello_in_multi",
+  "ok": true,
+  "valkey": {
+   "get_reply": "RESP3-null"
+  },
+  "rvk": {
+   "get_reply": "RESP3-null"
+  }
+ },
+ {
+  "scenario": "keys_unterminated_class",
+  "ok": true,
+  "valkey": {
+   "keys": [
+    "b'a'"
+   ]
+  },
+  "rvk": {
+   "keys": [
+    "b'a'"
+   ]
+  }
+ },
+ {
+  "scenario": "protocol_error_text",
+  "ok": true,
+  "valkey": {
+   "reply": "-ERR Protocol error: expected '$', got ' '\r\n"
+  },
+  "rvk": {
+   "reply": "-ERR Protocol error: expected '$', got ' '\r\n"
+  }
+ },
+ {
+  "scenario": "randomkey_mostly_expired",
+  "ok": true,
+  "valkey": {
+   "randomkey": [
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'"
+   ]
+  },
+  "rvk": {
+   "randomkey": [
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'",
+    "b'live'"
+   ]
+  }
+ },
+ {
+  "scenario": "backpressure",
+  "ok": true,
+  "valkey": {
+   "replies": 200,
+   "alive": true
+  },
+  "rvk": {
+   "replies": 200,
+   "alive": true
+  }
+ },
+ {
+  "scenario": "multi_queue_limit",
+  "ok": true,
+  "valkey": {
+   "closed": true,
+   "alive": true
+  },
+  "rvk": {
+   "closed": true,
+   "alive": true
+  }
+ }
+]

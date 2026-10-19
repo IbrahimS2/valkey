@@ -216,6 +216,10 @@ def start_impl(impl, wd):
     return h.Rvk(h.BASE_PORT, h.SERVER_CPUS[0], 1, wd, [])
 
 
+# Part II round label for rvk-server records (round 2 rebuilt the store).
+RVK_LABEL = os.environ.get("P2_RVK_LABEL", "rvk")
+
+
 def section_p2memory(out):
     for keys, vsize in ((1_000_000, 100), (100_000, 16384)):
         for impl in ("valkey", "rvk"):
@@ -229,7 +233,8 @@ def section_p2memory(out):
                     time.sleep(1.0)
                     m1, r1 = used_memory(v.port)
                     rss1 = h.rss_bytes(v.pid)
-                    emit(out, {"section": "p2-memory", "impl": impl, "keys": keys, "value_size": vsize,
+                    emit(out, {"section": "p2-memory", "impl": RVK_LABEL if impl == "rvk" else impl,
+                               "keys": keys, "value_size": vsize,
                                "trial": trial, "used_memory_per_key": round((m1 - m0) / keys, 1),
                                "rss_per_key": round((rss1 - rss0) / keys, 1),
                                "info_rss_per_key": round((r1 - r0) / keys, 1), "payload_per_key": 16 + vsize})

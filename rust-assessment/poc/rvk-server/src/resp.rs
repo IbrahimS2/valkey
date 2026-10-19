@@ -58,8 +58,26 @@ pub enum Parsed {
     Command { consumed: usize },
     /// Bytes that produce no command (empty multibulk, blank inline line).
     Skip { consumed: usize },
-    /// Protocol error: reply with `-ERR <msg>` and close the connection.
-    Error(String),
+    /// Protocol error: reply with `-ERR <msg>` and close the connection. The
+    /// message is raw bytes because it may quote an offending input byte.
+    Error(Vec<u8>),
+}
+
+fn perr(msg: &str) -> Parsed {
+    Parsed::Error(msg.as_bytes().to_vec())
+}
+
+/// A multibulk request whose header and some arguments have arrived but not
+/// the rest. Keeping it per connection means every byte is parsed once, as
+/// Valkey does with `multibulklen`/`argv` on the client. Offsets are relative
+/// to the start of the request, which stays valid when the read buffer is
+/// compacted.
+#[derive(Debug, Default)]
+pub struct Partial {
+    count: i64,
+    /// Offset of the next argument's `$` header.
+    next: usize,
+    ranges: Vec<ArgRange>,
 }
 
 /// Parses a signed decimal the way Valkey's `string2ll` does for protocol
@@ -97,67 +115,90 @@ pub fn parse(
     authed: bool,
     ranges: &mut Vec<ArgRange>,
     scratch: &mut Vec<u8>,
+    partial: &mut Option<Partial>,
 ) -> Parsed {
     ranges.clear();
     if pos >= buf.len() {
         return Parsed::Incomplete;
     }
-    if buf[pos] != b'*' {
-        return parse_inline(buf, pos, ranges, scratch);
-    }
-    let Some(cr) = memchr_cr(buf, pos) else {
-        if buf.len() - pos > INLINE_MAX {
-            return Parsed::Error("Protocol error: too big mbulk count string".into());
+    let (count, mut p) = match partial.take() {
+        Some(pt) => {
+            // Resume: earlier arguments were validated on a previous call.
+            ranges.extend(pt.ranges.iter().map(|r| ArgRange { start: r.start + pos as u32, end: r.end + pos as u32, src: Src::Buf }));
+            (pt.count, pos + pt.next)
         }
-        return Parsed::Incomplete;
+        None => {
+            if buf[pos] != b'*' {
+                return parse_inline(buf, pos, ranges, scratch);
+            }
+            let Some(cr) = memchr_cr(buf, pos) else {
+                if buf.len() - pos > INLINE_MAX {
+                    return perr("Protocol error: too big mbulk count string");
+                }
+                return Parsed::Incomplete;
+            };
+            if cr + 1 >= buf.len() {
+                return Parsed::Incomplete;
+            }
+            if buf[cr + 1] != b'\n' {
+                return perr("Protocol error: invalid CRLF in request");
+            }
+            let count = match parse_i64(&buf[pos + 1..cr]) {
+                Some(n) if n <= MAX_MULTIBULK => n,
+                _ => return perr("Protocol error: invalid multibulk length"),
+            };
+            if count > UNAUTH_MAX_MULTIBULK && !authed {
+                return perr("Protocol error: unauthenticated multibulk length");
+            }
+            if count <= 0 {
+                return Parsed::Skip { consumed: cr + 2 - pos };
+            }
+            (count, cr + 2)
+        }
     };
-    if cr + 1 >= buf.len() {
-        return Parsed::Incomplete;
-    }
-    if buf[cr + 1] != b'\n' {
-        return Parsed::Error("Protocol error: invalid CRLF in request".into());
-    }
-    let count = match parse_i64(&buf[pos + 1..cr]) {
-        Some(n) if n <= MAX_MULTIBULK => n,
-        _ => return Parsed::Error("Protocol error: invalid multibulk length".into()),
+    let save = |ranges: &mut Vec<ArgRange>, partial: &mut Option<Partial>, p: usize| {
+        let rel = ranges.iter().map(|r| ArgRange { start: r.start - pos as u32, end: r.end - pos as u32, src: Src::Buf }).collect();
+        *partial = Some(Partial { count, next: p - pos, ranges: rel });
+        Parsed::Incomplete
     };
-    if count > UNAUTH_MAX_MULTIBULK && !authed {
-        return Parsed::Error("Protocol error: unauthenticated multibulk length".into());
-    }
-    let mut p = cr + 2;
-    if count <= 0 {
-        return Parsed::Skip { consumed: p - pos };
-    }
-    for _ in 0..count {
+    while (ranges.len() as i64) < count {
         let Some(cr) = memchr_cr(buf, p) else {
             if buf.len() - p > INLINE_MAX {
-                return Parsed::Error("Protocol error: too big bulk count string".into());
+                return perr("Protocol error: too big bulk count string");
             }
-            return Parsed::Incomplete;
+            return save(ranges, partial, p);
         };
         if cr + 1 >= buf.len() {
-            return Parsed::Incomplete;
+            return save(ranges, partial, p);
         }
         if buf[p] != b'$' {
-            return Parsed::Error(format!("Protocol error: expected '$', got '{}'", buf[p] as char));
+            // addReplyErrorFormat maps CR and LF to spaces and copies other bytes as they are.
+            let c = match buf[p] {
+                b'\r' | b'\n' => b' ',
+                c => c,
+            };
+            let mut msg = b"Protocol error: expected '$', got '".to_vec();
+            msg.push(c);
+            msg.push(b'\'');
+            return Parsed::Error(msg);
         }
         if buf[cr + 1] != b'\n' {
-            return Parsed::Error("Protocol error: invalid CRLF in request".into());
+            return perr("Protocol error: invalid CRLF in request");
         }
         let len = match parse_i64(&buf[p + 1..cr]) {
             Some(n) if n >= 0 && (n as u64) <= max_bulk as u64 => n as usize,
-            _ => return Parsed::Error("Protocol error: invalid bulk length".into()),
+            _ => return perr("Protocol error: invalid bulk length"),
         };
         if len > UNAUTH_MAX_BULK && !authed {
-            return Parsed::Error("Protocol error: unauthenticated bulk length".into());
+            return perr("Protocol error: unauthenticated bulk length");
         }
         let start = cr + 2;
         let end = start + len;
         if buf.len() < end + 2 {
-            return Parsed::Incomplete;
+            return save(ranges, partial, p);
         }
         if buf[end] != b'\r' || buf[end + 1] != b'\n' {
-            return Parsed::Error("Protocol error: invalid CRLF in request".into());
+            return perr("Protocol error: invalid CRLF in request");
         }
         ranges.push(ArgRange { start: start as u32, end: end as u32, src: Src::Buf });
         p = end + 2;
@@ -173,23 +214,23 @@ fn memchr_cr(buf: &[u8], from: usize) -> Option<usize> {
 fn parse_inline(buf: &[u8], pos: usize, ranges: &mut Vec<ArgRange>, scratch: &mut Vec<u8>) -> Parsed {
     let Some(nl) = buf[pos..].iter().position(|&b| b == b'\n') else {
         if buf.len() - pos > INLINE_MAX {
-            return Parsed::Error("Protocol error: too big inline request".into());
+            return perr("Protocol error: too big inline request");
         }
         return Parsed::Incomplete;
     };
     if nl > INLINE_MAX {
-        return Parsed::Error("Protocol error: too big inline request".into());
+        return perr("Protocol error: too big inline request");
     }
     let mut line = &buf[pos..pos + nl];
     if line.last() == Some(&b'\r') {
         line = &line[..line.len() - 1];
     }
     if line.contains(&0) {
-        return Parsed::Error("Protocol error: embedded NUL byte in inline request".into());
+        return perr("Protocol error: embedded NUL byte in inline request");
     }
     scratch.clear();
     if !split_args(line, scratch, ranges) {
-        return Parsed::Error("Protocol error: unbalanced quotes in request".into());
+        return perr("Protocol error: unbalanced quotes in request");
     }
     if ranges.is_empty() {
         return Parsed::Skip { consumed: nl + 1 };
@@ -400,6 +441,18 @@ impl Reply<'_> {
 mod tests {
     use super::*;
 
+    /// One-shot parse with no carried-over state.
+    fn parse(buf: &[u8], pos: usize, max: usize, authed: bool, r: &mut Vec<ArgRange>, s: &mut Vec<u8>) -> Parsed {
+        super::parse(buf, pos, max, authed, r, s, &mut None)
+    }
+
+    fn has(p: &Parsed, needle: &str) -> bool {
+        match p {
+            Parsed::Error(e) => e.windows(needle.len()).any(|w| w == needle.as_bytes()),
+            _ => false,
+        }
+    }
+
     fn args_of(buf: &[u8], ranges: &[ArgRange], scratch: &[u8]) -> Vec<Vec<u8>> {
         let a = Args { buf, scratch, ranges };
         (0..a.len()).map(|i| a.get(i).to_vec()).collect()
@@ -421,21 +474,24 @@ mod tests {
         let (mut r, mut s) = (Vec::new(), Vec::new());
         assert_eq!(parse(b"*0\r\n", 0, 100, true, &mut r, &mut s), Parsed::Skip { consumed: 4 });
         assert_eq!(parse(b"*-1\r\n", 0, 100, true, &mut r, &mut s), Parsed::Skip { consumed: 5 });
-        assert!(matches!(parse(b"*x\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("multibulk length")));
+        assert!(has(&parse(b"*x\r\n", 0, 100, true, &mut r, &mut s), "multibulk length"));
         assert_eq!(parse(b"*2000000\r\n", 0, 100, true, &mut r, &mut s), Parsed::Incomplete);
         assert!(matches!(parse(b"*2147483648\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(_)));
-        assert!(matches!(parse(b"*11\r\n", 0, 100, false, &mut r, &mut s), Parsed::Error(e) if e.contains("unauthenticated multibulk")));
-        assert!(matches!(parse(b"*1\r\n$16385\r\n", 0, 1 << 20, false, &mut r, &mut s), Parsed::Error(e) if e.contains("unauthenticated bulk")));
-        assert!(matches!(parse(b"*1\r\n:1\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e == "Protocol error: expected '$', got ':'"));
-        assert!(matches!(parse(b"*1\r\n$101\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("bulk length")));
+        assert!(has(&parse(b"*11\r\n", 0, 100, false, &mut r, &mut s), "unauthenticated multibulk"));
+        assert!(has(&parse(b"*1\r\n$16385\r\n", 0, 1 << 20, false, &mut r, &mut s), "unauthenticated bulk"));
+        assert_eq!(parse(b"*1\r\n:1\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(b"Protocol error: expected '$', got ':'".to_vec()));
+        // CR/LF in the quoted byte become spaces; other bytes are copied raw.
+        assert_eq!(parse(b"*1\r\n\n\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(b"Protocol error: expected '$', got ' '".to_vec()));
+        assert_eq!(parse(b"*1\r\n\xff\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(b"Protocol error: expected '$', got '\xff'".to_vec()));
+        assert!(has(&parse(b"*1\r\n$101\r\n", 0, 100, true, &mut r, &mut s), "bulk length"));
         assert!(matches!(parse(b"*1\r\n$-1\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(_)));
         // Strict CRLF checks (protocol.tcl "Check CRLF when parsing the querybuf").
-        let crlf = |b: &[u8]| matches!(parse(b, 0, 100, true, &mut Vec::new(), &mut Vec::new()), Parsed::Error(e) if e.contains("invalid CRLF"));
+        let crlf = |b: &[u8]| has(&parse(b, 0, 100, true, &mut Vec::new(), &mut Vec::new()), "invalid CRLF");
         assert!(crlf(b"*3\rx$3\r\nSET\r\n"));
         assert!(crlf(b"*1\r\n$3\rxSET\r\n"));
         assert!(crlf(b"*1\r\n$3\r\nSETxx"));
-        assert!(matches!(parse(b"*3x\n$3\r\nSET\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("multibulk length")));
-        assert!(matches!(parse(b"*1\r\n$3x\nSET\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("bulk length")));
+        assert!(has(&parse(b"*3x\n$3\r\nSET\r\n", 0, 100, true, &mut r, &mut s), "multibulk length"));
+        assert!(has(&parse(b"*1\r\n$3x\nSET\r\n", 0, 100, true, &mut r, &mut s), "bulk length"));
     }
 
     #[test]
@@ -450,8 +506,8 @@ mod tests {
         let mixed = b"set \"\"\"tes\"t-'k'e\"y\" \"test\"'-'value\r\n";
         assert_eq!(parse(mixed, 0, 100, true, &mut r, &mut s), Parsed::Command { consumed: mixed.len() });
         assert_eq!(args_of(mixed, &r, &s), vec![b"set".to_vec(), b"test-key".to_vec(), b"test-value".to_vec()]);
-        assert!(matches!(parse(b"set foo 'b'a'r\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("unbalanced")));
-        assert!(matches!(parse(b"set foo bar\x00 ex\r\n", 0, 100, true, &mut r, &mut s), Parsed::Error(e) if e.contains("NUL")));
+        assert!(has(&parse(b"set foo 'b'a'r\r\n", 0, 100, true, &mut r, &mut s), "unbalanced"));
+        assert!(has(&parse(b"set foo bar\x00 ex\r\n", 0, 100, true, &mut r, &mut s), "NUL"));
         assert_eq!(parse(b"PING", 0, 100, true, &mut r, &mut s), Parsed::Incomplete);
     }
 
@@ -496,6 +552,50 @@ mod tests {
             }
             proptest::prop_assert_eq!(parse(&req, 0, 1 << 20, true, &mut r, &mut s), Parsed::Command { consumed: req.len() });
             proptest::prop_assert_eq!(args_of(&req, &r, &s), args);
+        }
+
+        // Feeding a request in pieces with the resume state carried between
+        // calls (as the server does) yields exactly the one-shot result, even
+        // when the request does not start at offset 0 and the buffer is
+        // compacted between calls.
+        #[test]
+        fn resumed_parse_matches_one_shot(args in proptest::collection::vec(proptest::collection::vec(proptest::num::u8::ANY, 0..40), 1..8), cuts in proptest::collection::vec(0usize..600, 0..6), lead in 0usize..3) {
+            let mut req = Vec::new();
+            req.extend_from_slice(format!("*{}\r\n", args.len()).as_bytes());
+            for a in &args {
+                req.extend_from_slice(format!("${}\r\n", a.len()).as_bytes());
+                req.extend_from_slice(a);
+                req.extend_from_slice(b"\r\n");
+            }
+            let mut cuts: Vec<usize> = cuts.into_iter().map(|c| c.min(req.len())).collect();
+            cuts.sort_unstable();
+            cuts.push(req.len());
+            // `lead` bytes of an already-consumed earlier command precede the request.
+            let mut buf = vec![b'x'; lead];
+            let (mut r, mut s, mut partial) = (Vec::new(), Vec::new(), None);
+            let mut fed = 0;
+            let mut pos = lead;
+            let mut done = false;
+            for c in cuts {
+                buf.extend_from_slice(&req[fed..c]);
+                fed = c;
+                match super::parse(&buf, pos, 1 << 20, true, &mut r, &mut s, &mut partial) {
+                    Parsed::Incomplete => {
+                        proptest::prop_assert!(fed < req.len());
+                        // Compact like server::process does.
+                        buf.drain(..pos);
+                        pos = 0;
+                    }
+                    Parsed::Command { consumed } => {
+                        proptest::prop_assert_eq!(consumed, req.len());
+                        proptest::prop_assert_eq!(args_of(&buf, &r, &s), args.clone());
+                        done = true;
+                        break;
+                    }
+                    other => proptest::prop_assert!(false, "unexpected {:?}", other),
+                }
+            }
+            proptest::prop_assert!(done);
         }
     }
 }

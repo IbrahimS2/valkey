@@ -6,9 +6,16 @@
 //! connections directly against the shared, lock-sharded `Store`.
 //!
 //! I/O discipline (the measured bottleneck is per-request system calls):
-//! * reads stop after a short read: the socket is known to be drained, and
-//!   edge-triggered epoll reports any later data, so no EAGAIN read is needed;
-//! * all replies produced by one read are written with one `write`.
+//! * each chunk read is executed before the next read, and reading stops after
+//!   a short read: the socket is known to be drained, and edge-triggered epoll
+//!   reports any later data, so no EAGAIN read is needed;
+//! * replies are written after every ready connection of an `epoll_wait`
+//!   batch has been served, like Valkey's `beforeSleep`: a client then gets
+//!   its replies back-to-back and is woken once, instead of being woken for
+//!   each reply as it is produced (the first version did that, and the profile
+//!   showed the extra cross-CPU wakeups as kernel time);
+//! * a connection with more than `OUTPUT_PAUSE` bytes of pending output is not
+//!   read until it drains, so TCP flow control pushes back on the client.
 
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
@@ -64,6 +71,8 @@ pub struct Config {
     pub proto_max_bulk_len: usize,
     pub client_query_buffer_limit: usize,
     pub maxmemory_samples: usize,
+    /// `enable-debug-command`: DEBUG is refused unless this is set.
+    pub enable_debug: bool,
 }
 
 /// Per-thread counters; written by one thread, summed by INFO.
@@ -87,13 +96,12 @@ impl Stats {
         // Single writer per counter: a relaxed load+store avoids a locked RMW.
         c.store(c.load(Ordering::Relaxed).wrapping_add(n), Ordering::Relaxed);
     }
-    pub fn reset(&self) {
-        for c in [
+    pub fn values(&self) -> [u64; 10] {
+        [
             &self.commands, &self.net_in, &self.net_out, &self.hits, &self.misses, &self.expired,
             &self.evicted, &self.errors, &self.conns_received, &self.rejected,
-        ] {
-            c.store(0, Ordering::Relaxed);
-        }
+        ]
+        .map(|c| c.load(Ordering::Relaxed))
     }
 }
 
@@ -103,8 +111,12 @@ pub struct Shared {
     pub maxmemory: AtomicUsize,
     pub policy: RwLock<Policy>,
     pub stats: Vec<Arc<CachePadded<Stats>>>,
-    /// Pending CONFIG RESETSTAT requests, applied by each owning thread.
-    pub reset_epoch: AtomicU64,
+    /// Counter totals at the last CONFIG RESETSTAT. Counters only grow, so
+    /// INFO reports totals minus this baseline; no thread's counter is ever
+    /// written by another thread.
+    pub stats_base: std::sync::Mutex<[u64; 10]>,
+    /// `DEBUG SET-ACTIVE-EXPIRE`, for every worker.
+    pub active_expire: AtomicBool,
     pub connected: AtomicUsize,
     pub next_client_id: AtomicU64,
     pub shutdown: AtomicBool,
@@ -135,7 +147,22 @@ struct Conn {
     wbuf: Vec<u8>,
     wpos: usize,
     writable_registered: bool,
+    /// A multibulk request that has partly arrived (see `resp::Partial`).
+    partial: Option<resp::Partial>,
+    /// Reading stopped because too much output is pending.
+    read_paused: bool,
+    /// The peer shut down its sending side (EPOLLRDHUP); read to EOF.
+    peer_closed: bool,
+    /// In this pass's list of connections with replies to write.
+    queued: bool,
     state: ConnState,
+}
+
+impl Conn {
+    #[inline]
+    fn pending_output(&self) -> usize {
+        self.wbuf.len() - self.wpos
+    }
 }
 
 fn make_listener(addr: SocketAddr) -> io::Result<std::net::TcpListener> {
@@ -151,6 +178,10 @@ fn make_listener(addr: SocketAddr) -> io::Result<std::net::TcpListener> {
 
 pub fn run(cfg: Config, maxmemory: usize, policy: Policy) -> io::Result<()> {
     let addr: SocketAddr = format!("{}:{}", cfg.bind, cfg.port).parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    // SO_REUSEPORT would let a second server bind the same port and silently
+    // split connections with this one. A plain bind fails if anything is
+    // already listening, as Valkey's does.
+    drop(std::net::TcpListener::bind(addr)?);
     // Bind every listener before starting workers so start-up errors surface here.
     let listeners: Vec<std::net::TcpListener> = (0..cfg.threads).map(|_| make_listener(addr)).collect::<io::Result<_>>()?;
     let run_id: String = {
@@ -170,7 +201,8 @@ pub fn run(cfg: Config, maxmemory: usize, policy: Policy) -> io::Result<()> {
         stats: (0..cfg.threads).map(|_| Arc::new(CachePadded(Stats::default()))).collect(),
         maxmemory: AtomicUsize::new(maxmemory),
         policy: RwLock::new(policy),
-        reset_epoch: AtomicU64::new(0),
+        stats_base: std::sync::Mutex::new([0; 10]),
+        active_expire: AtomicBool::new(true),
         connected: AtomicUsize::new(0),
         next_client_id: AtomicU64::new(1),
         shutdown: AtomicBool::new(false),
@@ -209,9 +241,17 @@ fn worker(id: usize, shared: Arc<Shared>, listener: std::net::TcpListener) -> io
     let mut tc = ThreadCtx::new(id, shared.clone());
     let cron_every = Duration::from_millis((1000 / shared.cfg.hz.max(1)) as u64);
     let mut next_cron = Instant::now() + cron_every;
-    let mut seen_reset = 0u64;
+    // Set when accept() failed for a reason other than an empty queue (for
+    // example EMFILE): the edge-triggered listener raises no new event for
+    // connections already queued, so accepting is retried every tick.
+    let mut accept_retry = false;
+    // Connections with replies to write once this pass's events are served.
+    let mut pending: Vec<usize> = Vec::new();
     loop {
-        let timeout = next_cron.saturating_duration_since(Instant::now());
+        let mut timeout = next_cron.saturating_duration_since(Instant::now());
+        if accept_retry {
+            timeout = timeout.min(Duration::from_millis(10));
+        }
         if let Err(e) = poll.poll(&mut events, Some(timeout)) {
             if e.kind() != io::ErrorKind::Interrupted {
                 return Err(e);
@@ -219,25 +259,32 @@ fn worker(id: usize, shared: Arc<Shared>, listener: std::net::TcpListener) -> io
         }
         for ev in events.iter() {
             match ev.token() {
-                LISTENER => accept_all(&mut listener, &poll, &mut conns, &mut free, &shared, &tc),
+                LISTENER => accept_retry = !accept_all(&mut listener, &poll, &mut conns, &mut free, &shared, &tc),
                 Token(t) => {
                     let mut close = false;
                     if let Some(Some(conn)) = conns.get_mut(t) {
                         if ev.is_readable() || ev.is_read_closed() {
-                            close |= on_readable(conn, &mut tc);
+                            close |= on_readable(conn, &mut tc, &shared, ev.is_read_closed());
                         }
                         if !close && ev.is_writable() {
-                            close |= on_writable(conn, &mut tc);
+                            close |= write_out(conn, &mut tc, &shared);
                         }
-                        if !close && (ev.is_error() || (ev.is_write_closed() && conn.wbuf.len() > conn.wpos)) {
+                        if !close && (ev.is_error() || (ev.is_write_closed() && conn.pending_output() > 0)) {
                             close = true;
                         }
                         if !close {
-                            close |= update_interest(conn, &poll, t);
+                            if conn.pending_output() > 0 || conn.state.close_after_reply {
+                                if !conn.queued {
+                                    conn.queued = true;
+                                    pending.push(t);
+                                }
+                            } else {
+                                close |= update_interest(conn, &poll, t);
+                            }
                         }
                     }
                     if close {
-                        close_conn(&mut conns, &mut free, t, &poll, &shared, &mut tc);
+                        close_conn(&mut conns, &mut free, t, &poll, &shared);
                     }
                 }
             }
@@ -245,10 +292,25 @@ fn worker(id: usize, shared: Arc<Shared>, listener: std::net::TcpListener) -> io
                 shared.shutdown.store(true, Ordering::SeqCst);
             }
         }
-        let epoch = shared.reset_epoch.load(Ordering::Relaxed);
-        if epoch != seen_reset {
-            seen_reset = epoch;
-            shared.stats[id].reset();
+        // Valkey's handleClientsWithPendingWrites.
+        let mut batch = std::mem::take(&mut pending);
+        for &t in &batch {
+            let mut close = false;
+            if let Some(Some(conn)) = conns.get_mut(t) {
+                if !conn.queued {
+                    continue; // the slot now belongs to a new connection
+                }
+                conn.queued = false;
+                close = write_out(conn, &mut tc, &shared) || update_interest(conn, &poll, t);
+            }
+            if close {
+                close_conn(&mut conns, &mut free, t, &poll, &shared);
+            }
+        }
+        batch.clear();
+        pending = batch;
+        if accept_retry {
+            accept_retry = !accept_all(&mut listener, &poll, &mut conns, &mut free, &shared, &tc);
         }
         if shared.shutdown.load(Ordering::Relaxed) {
             // SHUTDOWN: flush what we can and exit the whole process.
@@ -265,13 +327,28 @@ fn worker(id: usize, shared: Arc<Shared>, listener: std::net::TcpListener) -> io
     }
 }
 
-fn accept_all(listener: &mut TcpListener, poll: &Poll, conns: &mut Vec<Option<Conn>>, free: &mut Vec<usize>, shared: &Shared, tc: &ThreadCtx) {
+/// Valkey's `anetKeepAlive(fd, 300)`: probe idle peers so dead ones are freed.
+fn set_keepalive(stream: &TcpStream) {
+    let ka = socket2::TcpKeepalive::new()
+        .with_time(Duration::from_secs(300))
+        .with_interval(Duration::from_secs(100))
+        .with_retries(3);
+    let _ = socket2::SockRef::from(stream).set_tcp_keepalive(&ka);
+}
+
+/// Accepts every queued connection. Returns false if accept() failed with an
+/// error that leaves connections queued (so the caller retries later).
+fn accept_all(listener: &mut TcpListener, poll: &Poll, conns: &mut Vec<Option<Conn>>, free: &mut Vec<usize>, shared: &Shared, tc: &ThreadCtx) -> bool {
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
                 let _ = stream.set_nodelay(true);
+                set_keepalive(&stream);
                 Stats::add(&tc.stats().conns_received, 1);
-                if shared.connected.load(Ordering::Relaxed) >= shared.cfg.maxclients {
+                // Reserve the slot first so concurrent accepts on other workers
+                // cannot all pass the check.
+                if shared.connected.fetch_add(1, Ordering::Relaxed) >= shared.cfg.maxclients {
+                    shared.connected.fetch_sub(1, Ordering::Relaxed);
                     let _ = stream.write(b"-ERR max number of clients reached\r\n");
                     Stats::add(&tc.stats().rejected, 1);
                     continue;
@@ -281,10 +358,10 @@ fn accept_all(listener: &mut TcpListener, poll: &Poll, conns: &mut Vec<Option<Co
                     conns.len() - 1
                 });
                 if poll.registry().register(&mut stream, Token(t), Interest::READABLE).is_err() {
+                    shared.connected.fetch_sub(1, Ordering::Relaxed);
                     free.push(t);
                     continue;
                 }
-                shared.connected.fetch_add(1, Ordering::Relaxed);
                 let cid = shared.next_client_id.fetch_add(1, Ordering::Relaxed);
                 conns[t] = Some(Conn {
                     stream,
@@ -293,106 +370,174 @@ fn accept_all(listener: &mut TcpListener, poll: &Poll, conns: &mut Vec<Option<Co
                     wbuf: Vec::with_capacity(READ_CHUNK),
                     wpos: 0,
                     writable_registered: false,
+                    partial: None,
+                    read_paused: false,
+                    peer_closed: false,
+                    queued: false,
                     state: ConnState::new(cid, shared.cfg.requirepass.is_none()),
                 });
             }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return true,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(_) => return,
+            Err(e) => {
+                if e.kind() != io::ErrorKind::ConnectionAborted {
+                    eprintln!("rvk-server: accept: {e}");
+                    return false;
+                }
+            }
         }
     }
 }
 
-fn close_conn(conns: &mut [Option<Conn>], free: &mut Vec<usize>, t: usize, poll: &Poll, shared: &Shared, tc: &mut ThreadCtx) {
+fn close_conn(conns: &mut [Option<Conn>], free: &mut Vec<usize>, t: usize, poll: &Poll, shared: &Shared) {
     if let Some(mut c) = conns[t].take() {
         let _ = poll.registry().deregister(&mut c.stream);
-        cmd::on_disconnect(tc, &mut c.state);
+        cmd::on_disconnect(shared, &mut c.state);
         shared.connected.fetch_sub(1, Ordering::Relaxed);
         free.push(t);
     }
 }
 
-/// Reads until a short read, then executes every complete command.
-/// Returns true if the connection must be closed.
-fn on_readable(conn: &mut Conn, tc: &mut ThreadCtx) -> bool {
+/// Valkey's 16 KB static reply buffer plus REPLY_BUFFER_SIZE_UNAUTHENTICATED_CLIENT.
+const UNAUTH_OUTPUT_LIMIT: usize = 16 * 1024 + 1024;
+
+/// Like Valkey's querybuf limit, this applies to input not yet executed;
+/// clients that never authenticated are held to 1 MB.
+fn query_limit(conn: &Conn, sh: &Shared) -> usize {
+    if conn.state.never_authed() {
+        sh.cfg.client_query_buffer_limit.min(1 << 20)
+    } else {
+        sh.cfg.client_query_buffer_limit
+    }
+}
+
+/// Outcome of executing buffered input.
+enum Step {
+    Close,
+    /// Execution stopped for output backpressure; reading is paused.
+    Paused,
+    Done,
+}
+
+/// Executes buffered input; replies are written later by `write_out`.
+fn run_buffered(conn: &mut Conn, tc: &mut ThreadCtx, sh: &Shared) -> Step {
+    let paused = process(conn, tc, sh);
+    if conn.state.kill || conn.rlen > query_limit(conn, sh) {
+        return Step::Close;
+    }
+    if conn.state.never_authed() && conn.pending_output() > UNAUTH_OUTPUT_LIMIT {
+        return Step::Close;
+    }
+    if paused {
+        conn.read_paused = true;
+        return Step::Paused;
+    }
+    Step::Done
+}
+
+/// Reads and executes input one chunk at a time, until a short read (the
+/// socket is drained), EOF, or output backpressure. Returns true if the
+/// connection must be closed.
+fn on_readable(conn: &mut Conn, tc: &mut ThreadCtx, sh: &Shared, read_closed: bool) -> bool {
+    if read_closed {
+        // The FIN may have arrived with the last data, in which case no
+        // further edge is raised: read until EOF instead of stopping early.
+        conn.peer_closed = true;
+    }
     loop {
+        if conn.read_paused || conn.state.close_after_reply {
+            // write_out resumes reading once the output drains.
+            return false;
+        }
         if conn.rlen == conn.rbuf.len() {
-            // Buffer full: grow (a large bulk argument is arriving).
-            let new_len = (conn.rbuf.len() * 2).max(READ_CHUNK);
+            // Buffer full of an incomplete request: grow it, but never far past
+            // the limit (the next read then closes the connection).
+            let new_len = (conn.rbuf.len() * 2).max(READ_CHUNK).min(query_limit(conn, sh) + READ_CHUNK);
+            if new_len <= conn.rbuf.len() {
+                return true;
+            }
             conn.rbuf.resize(new_len, 0);
         }
         let avail = conn.rbuf.len() - conn.rlen;
         match conn.stream.read(&mut conn.rbuf[conn.rlen..]) {
-            Ok(0) => return true,
+            Ok(0) => {
+                // EOF: execute what arrived before the FIN, as Valkey does.
+                process(conn, tc, sh);
+                let _ = flush(conn, tc);
+                return true;
+            }
             Ok(n) => {
                 conn.rlen += n;
                 Stats::add(&tc.stats().net_in, n as u64);
-                if conn.rlen > tc.shared.cfg.client_query_buffer_limit {
-                    return true;
+                match run_buffered(conn, tc, sh) {
+                    Step::Close => return true,
+                    Step::Paused => return false,
+                    Step::Done => {}
                 }
-                if n < avail {
-                    break;
+                if n < avail && !conn.peer_closed {
+                    return false;
                 }
             }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return false,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(_) => return true,
         }
     }
-    process_and_flush(conn, tc)
 }
 
-fn on_writable(conn: &mut Conn, tc: &mut ThreadCtx) -> bool {
-    if flush(conn, tc) {
-        return true;
-    }
-    // Input may have been left unprocessed while output was paused.
-    if conn.wbuf.is_empty() && conn.rlen > 0 && !conn.state.close_after_reply {
-        return process_and_flush(conn, tc);
+/// Writes a connection's pending replies (Valkey's `beforeSleep` write
+/// phase) and, once output paused for backpressure has drained, executes the
+/// input left waiting and reads on: no new epoll edge would report it.
+/// Returns true if the connection must be closed.
+fn write_out(conn: &mut Conn, tc: &mut ThreadCtx, sh: &Shared) -> bool {
+    for _ in 0..8 {
+        if flush(conn, tc) {
+            return true;
+        }
+        if !(conn.read_paused && conn.pending_output() <= OUTPUT_PAUSE / 2) {
+            return false;
+        }
+        conn.read_paused = false;
+        match run_buffered(conn, tc, sh) {
+            Step::Close => return true,
+            Step::Paused => continue,
+            Step::Done => {}
+        }
+        if on_readable(conn, tc, sh, false) {
+            return true;
+        }
+        if conn.pending_output() == 0 {
+            return false;
+        }
     }
     false
 }
 
-/// Executes buffered commands and writes replies. When processing paused for
-/// output backpressure and the output then drained completely, no further
-/// epoll edge would arrive for the buffered input, so it resumes here.
-fn process_and_flush(conn: &mut Conn, tc: &mut ThreadCtx) -> bool {
-    loop {
-        let paused = process(conn, tc);
-        if flush(conn, tc) {
-            return true;
-        }
-        if !(paused && conn.wbuf.is_empty()) {
-            return false;
-        }
-    }
-}
-
-/// Returns true if it stopped early because too much output was pending.
-fn process(conn: &mut Conn, tc: &mut ThreadCtx) -> bool {
-    let Conn { rbuf, rlen, wbuf, state, .. } = conn;
+/// Executes every complete command in the read buffer. Returns true if it
+/// stopped early because too much output is pending.
+fn process(conn: &mut Conn, tc: &mut ThreadCtx, sh: &Shared) -> bool {
+    let Conn { rbuf, rlen, wbuf, wpos, state, partial, .. } = conn;
     let buf = &rbuf[..*rlen];
     let mut pos = 0;
     let mut ranges: Vec<ArgRange> = std::mem::take(&mut tc.ranges);
     let mut scratch: Vec<u8> = std::mem::take(&mut tc.scratch);
     let mut paused = false;
-    while pos < buf.len() && !state.close_after_reply {
-        if wbuf.len() > OUTPUT_PAUSE {
+    while pos < buf.len() && !state.close_after_reply && !state.kill {
+        if wbuf.len() - *wpos > OUTPUT_PAUSE {
             paused = true;
             break;
         }
-        match resp::parse(buf, pos, tc.shared.cfg.proto_max_bulk_len, state.authed(), &mut ranges, &mut scratch) {
+        match resp::parse(buf, pos, sh.cfg.proto_max_bulk_len, state.authed(), &mut ranges, &mut scratch, partial) {
             Parsed::Incomplete => break,
             Parsed::Skip { consumed } => pos += consumed,
             Parsed::Command { consumed } => {
                 let args = Args { buf, scratch: &scratch, ranges: &ranges };
-                cmd::execute(tc, state, &args, wbuf);
+                cmd::execute(sh, tc, state, &args, wbuf);
                 pos += consumed;
             }
             Parsed::Error(msg) => {
-                wbuf.push(b'-');
-                wbuf.extend_from_slice(b"ERR ");
-                wbuf.extend_from_slice(msg.as_bytes());
+                wbuf.extend_from_slice(b"-ERR ");
+                wbuf.extend_from_slice(&msg);
                 wbuf.extend_from_slice(b"\r\n");
                 Stats::add(&tc.stats().errors, 1);
                 state.close_after_reply = true;

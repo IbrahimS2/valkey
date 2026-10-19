@@ -376,6 +376,7 @@ SUITES.update({
     "p2-r2-core-p16": suite(P2_TOPOS, [w + "-p16" for w in CORE]),
     "p2-r2-conns": suite(P2_TOPOS, ["read90", "read90-p16"], conns=(200,)),
     "p2-r2-openloop": [dict(s, pacing="spin") for s in suite(P2_TOPOS, ["read90"], rates=(20_000, 60_000, 100_000))],
+    "p2-r2-evict": suite(["valkey-1t", "rvk-1t", "rvk-2t"], ["evict-uniform", "evict-skew"]),
     "p2-clients": suite(["valkey-1t", "valkey-io2", "rvk-2t"],
                         ["rs-read90", "rs-read90-mux1", "rs-skew-read90", "rs-skew-read90-mux1"], tool="rsclient")
                   + suite(["valkey-1t", "valkey-io2"], ["rs-skew-read90-mux1-cache"], tool="rsclient"),

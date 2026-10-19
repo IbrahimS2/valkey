@@ -661,8 +661,8 @@ dependencies = [
 name = "rvk-server"
 version = "0.1.0"
 dependencies = [
- "foldhash",
  "hashbrown",
+ "libc",
  "mio",
  "proptest",
  "socket2",

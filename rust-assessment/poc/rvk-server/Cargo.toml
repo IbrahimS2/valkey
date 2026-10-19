@@ -10,7 +10,7 @@ description = "Proof-of-concept Rust-native server implementing a declared subse
 mio = { version = "1", features = ["os-poll", "net"] }
 socket2 = { version = "0.6", features = ["all"] }
 hashbrown = { version = "0.17", default-features = false, features = ["inline-more"] }
-foldhash = "0.2"
+libc = "0.2"
 tikv-jemallocator = "0.7"
 tikv-jemalloc-ctl = { version = "0.7", features = ["stats"] }
 

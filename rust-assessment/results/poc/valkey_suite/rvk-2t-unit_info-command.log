@@ -1,6 +1,6 @@
 Cleanup: may take some time... OK
 Starting test server at port 21079
-[ready]: 8773
+[ready]: 14410
 Testing unit/info-command
 [exception]: Executing test client: can't read "version": no such variable.
 can't read "version": no such variable

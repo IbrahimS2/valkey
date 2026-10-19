@@ -9,7 +9,7 @@
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
-OUT="$HERE/../results/profile2"
+OUT=${PROFILE_OUT:-"$HERE/../results/profile2"}
 PERF=${PERF:-perf}
 BIN="$HERE/rust/target/release"
 RVK="$HERE/../poc/target/release/rvk-server"

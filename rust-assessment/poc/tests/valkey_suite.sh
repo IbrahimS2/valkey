@@ -42,7 +42,7 @@ until "$REPO/src/valkey-cli" -p $VPORT ping >/dev/null 2>&1; do sleep 0.05; done
 run_tests valkey $VPORT
 "$REPO/src/valkey-cli" -p $VPORT shutdown nosave >/dev/null 2>&1
 
-"$RVK" --port $RPORT --threads 2 > "$WORK/rvk.log" 2>&1 &
+"$RVK" --port $RPORT --threads 2 --enable-debug-command yes > "$WORK/rvk.log" 2>&1 &
 RPID=$!
 until "$REPO/src/valkey-cli" -p $RPORT ping >/dev/null 2>&1; do sleep 0.05; done
 run_tests rvk-2t $RPORT

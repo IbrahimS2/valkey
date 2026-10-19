@@ -20,7 +20,8 @@ use server::{Config, Policy};
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-fn parse_memory(s: &str) -> Option<usize> {
+/// Valkey's `memtoull`: k/m/g are powers of 1000, kb/mb/gb powers of 1024.
+pub(crate) fn parse_memory(s: &str) -> Option<usize> {
     let s = s.trim().to_ascii_lowercase();
     let (num, mul) = if let Some(n) = s.strip_suffix("gb") {
         (n, 1usize << 30)
@@ -37,7 +38,34 @@ fn parse_memory(s: &str) -> Option<usize> {
     } else {
         (s.as_str(), 1)
     };
-    num.parse::<usize>().ok().map(|n| n * mul)
+    num.parse::<usize>().ok()?.checked_mul(mul)
+}
+
+/// Raises the open-files limit for `maxclients` and, like Valkey's
+/// `adjustOpenFilesLimit`, lowers `maxclients` when the limit cannot cover it,
+/// so excess clients get an error instead of hanging in the accept queue.
+fn adjust_open_files(cfg: &mut Config) {
+    const RESERVED: u64 = 32;
+    let want = cfg.maxclients as u64 + RESERVED + cfg.threads as u64;
+    let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit/setrlimit only read and write the struct passed in.
+    unsafe {
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) != 0 {
+            return;
+        }
+        if lim.rlim_cur < want {
+            let new = want.min(lim.rlim_max);
+            let raised = libc::rlimit { rlim_cur: new, rlim_max: lim.rlim_max };
+            if libc::setrlimit(libc::RLIMIT_NOFILE, &raised) == 0 {
+                lim.rlim_cur = new;
+            }
+        }
+    }
+    let cap = lim.rlim_cur.saturating_sub(RESERVED + cfg.threads as u64) as usize;
+    if cap < cfg.maxclients {
+        eprintln!("rvk-server: open-files limit {} allows only {} clients; maxclients lowered from {}", lim.rlim_cur, cap, cfg.maxclients);
+        cfg.maxclients = cap;
+    }
 }
 
 fn die(msg: &str) -> ! {
@@ -56,6 +84,7 @@ fn main() {
         proto_max_bulk_len: 512 * 1024 * 1024,
         client_query_buffer_limit: 1024 * 1024 * 1024,
         maxmemory_samples: 5,
+        enable_debug: false,
     };
     let mut maxmemory = 0usize;
     let mut policy = Policy::NoEviction;
@@ -78,6 +107,14 @@ fn main() {
             "client-query-buffer-limit" => {
                 cfg.client_query_buffer_limit = parse_memory(&val).unwrap_or_else(|| die("bad --client-query-buffer-limit"))
             }
+            "enable-debug-command" => {
+                cfg.enable_debug = match val.as_str() {
+                    // rvk listens on loopback in every supported setup, so "local" means enabled.
+                    "yes" | "local" => true,
+                    "no" => false,
+                    _ => die("bad --enable-debug-command"),
+                }
+            }
             // Harmless Valkey options the benchmark harness passes.
             "save" if val.is_empty() => {}
             "appendonly" if val == "no" => {}
@@ -90,6 +127,12 @@ fn main() {
     if cfg.threads == 0 || cfg.threads > 64 {
         die("--threads must be between 1 and 64");
     }
+    // Argument positions in the read buffer are 32-bit offsets.
+    const MAX_BUF: usize = u32::MAX as usize - 1024;
+    if cfg.proto_max_bulk_len > MAX_BUF / 2 || cfg.client_query_buffer_limit > MAX_BUF / 2 {
+        die("--proto-max-bulk-len and --client-query-buffer-limit must be below 2gb in this proof of concept");
+    }
+    adjust_open_files(&mut cfg);
     if let Err(e) = server::run(cfg, maxmemory, policy) {
         die(&format!("{e}"));
     }
