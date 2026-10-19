@@ -223,3 +223,77 @@ so delete `results/raw/` for a clean rerun.
   fragmentation or rehashing.
 * **Not independently re-run.** The cross-check uses a second tool on the same host; no second machine or
   person repeated the runs.
+
+---
+
+# Part II: reassessment plan (pre-registered 2026-10-19, before any measurement of the new candidates)
+
+Part I (above) evaluated one candidate, a multiplexing proxy. The reassessment directive asks whether a properly
+architected Rust implementation could outperform Valkey. [REASSESSMENT.md](REASSESSMENT.md) explains why the proxy
+did not answer that, and [ARCHITECTURE_COMPARISON.md](ARCHITECTURE_COMPARISON.md) explains how the candidates were
+chosen. This part fixes the configurations, workloads and decision thresholds **before** any performance number for
+the new candidates was taken. The commit that adds this section precedes every new result file in the git history.
+
+## II.1 Configurations (same host and CPU layout as Part I: data service on CPUs 0–1, load generator on CPUs 2–3)
+
+| Name | What it is | Client contract | Question it answers |
+|---|---|---|---|
+| `valkey-1t` | Valkey, default threading, on CPU 0 | one endpoint | baseline |
+| `valkey-io2` | Valkey `io-threads 2` on CPUs 0–1 | one endpoint | Valkey's own single-endpoint multi-core option |
+| `valkey-2shard` | two Valkey processes, one per CPU | client routes keys (cluster-aware client) | Valkey's scale-out option |
+| `rvk-1t` | `rvk-server --threads 1` on CPU 0 | one endpoint | **implementation/language effect**: same architecture (one event loop) and same CPU as `valkey-1t` |
+| `rvk-2t` | `rvk-server --threads 2` on CPUs 0–1 | one endpoint | **architecture effect**: a multi-threaded, lock-sharded server on the same 2 CPUs |
+| `*-p16` | client pipelining, depth 16 | as above | capacity without per-request system call costs; avoids client saturation |
+| `rust-proxy` | Part I proxy, `read90` only | one endpoint | continuity with Part I under today's conditions |
+| redis-rs clients | the `redis` crate's MultiplexedConnection and experimental client-side cache | application-side | Candidate C, using maintained functionality rather than new code |
+
+## II.2 Workloads and measurements
+
+The Part I workloads and procedure are reused unchanged (§4–§7 above). The changes are:
+
+* `rvk-server` is started by the harness like `valkey-server`. It has no persistence, so the AOF scenarios compare
+  it only with Valkey's persistence-off runs, and say so.
+* **Open-loop latency** is reported twice: from the actual send time (as in Part I) and from the *intended* send
+  time. The second includes any lateness of the load generator itself, which removes coordinated omission. The
+  Part I audit found send lag of 0.8–1.1 ms p50 and up to 42 ms max that had not been reported.
+* Memory per key, profiles (`perf`) and correctness results are collected for `rvk-server` too.
+
+## II.3 Decision thresholds (pre-registered)
+
+**Gate 2 (functional validity), required before any performance number counts:**
+
+* Differential test against Valkey: mismatches only in features the feature matrix declares partial.
+* All concurrency invariants (`poc/tests/concurrency.py`) pass at 2 and 4 threads, including under `maxmemory`.
+* Zero errors, timeouts and reply misattributions in every benchmark run.
+
+**Gate 3 (performance validity), for Candidate A (`rvk-server`).** Ratios use medians of 3 trials on the core
+workloads (`read90`, `mixed50`, `write90`, `skew-read90`, 50 connections) plus 200 connections on `read90`.
+
+| Ratio | Definition | Reading |
+|---|---|---|
+| R1 | `rvk-1t` ÷ `valkey-1t` throughput (and CPU/op) | implementation effect. Within ±10%: no material language/implementation advantage. ≥ 1.20× at equal or lower CPU/op: advantage demonstrated |
+| R2 | `rvk-2t` ÷ `valkey-io2` | architecture effect at the same client contract (one endpoint) |
+| R3 | `rvk-2t` ÷ `valkey-2shard` | against Valkey's best measured use of 2 CPUs, which needs cluster-aware clients |
+
+* **GO** (build toward production) requires R3 ≥ 1.20 on at least 3 of 5 points, with CPU/op no higher than the
+  best native option, p99 at the same offered load ≤ 1.10× the best native option, Gate 2 passed, and Gate 4.
+* **CONDITIONAL GO** (a bounded experiment) requires R2 ≥ 1.20 and R3 ≥ 0.90 on at least 3 of 5 points, p99 at
+  the same offered load ≤ 1.10× the best single-endpoint Valkey option, and Gate 2 passed. This means: it matches
+  sharding without client routing and beats Valkey's single-endpoint option. The experiment must then be repeated
+  on a host where `io-threads` is in its intended regime (≥ 4 cores for the server), because on 2 vCPUs
+  `io-threads` is known to be weak (Part I).
+* **NO-GO** otherwise.
+* If a comparison is limited by the load generator (> 170% client CPU) on either side, it is decided on the
+  pipelined (`-p16`) runs instead, where the client is not the bottleneck.
+
+**Candidate B (proxy).** Not re-implemented: Part I measurements bound it (REASSESSMENT.md §4). Thresholds are
+unchanged from Part I §8.
+
+**Candidate C (optimization layer).** Only maintained functionality is measured (redis-rs). The question is
+"adopt", never "build": adopting is recommended for a workload class if application throughput rises ≥ 1.20× or
+data-service CPU per successful operation falls ≥ 20%, with staleness behavior documented.
+
+**Gate 4 (production and economic validity).** A GO also needs a measured advantage that existing solutions do not
+provide (Valkey `io-threads`, cluster mode with a cluster-aware client such as GLIDE), and a feature gap that can be
+closed at an estimated cost the advantage pays for. The repository has no production workload, so Gate 4 can at
+best be assessed conditionally.
