@@ -94,6 +94,14 @@ Unless noted, the dataset is preloaded before each run so every GET hits.
 | `read90-aof`, `write90-aof` | 90:10, 10:90 | 1M | 100 B | uniform | `appendonly yes`, `everysec` |
 | `evict-uniform` | 50:50 | 5M | 100 B | uniform | `maxmemory 256mb`, `allkeys-lru`; preload overfills, so the run is steady-state eviction |
 | `evict-skew` | 50:50 | 5M | 100 B | Zipf θ=0.99 | as above |
+| `get100-churn` | 100:0 | 1M | 100 B | uniform | `valkey-benchmark -k 0`: a new TCP connection per request (`churn` suite) |
+| `write90-aof-p16` | 10:90 | 1M | 100 B | uniform | AOF `everysec`, client pipeline depth 16 (`aof2` suite) |
+
+**Suites added during the run, disclosed here:** `churn` (connection churn is the classic case where a proxy with
+persistent upstream connections helps a server, so it is the proxy's best case and had to be tested) and `aof2`
+(the first AOF runs covered only `valkey-1t` and `rust-proxy`; §8 requires a comparison with the best
+Valkey-native topology). Both were added before their results were known. No run was repeated or discarded
+because of its result. The only excluded points are the not-applicable 1-connection `valkey-2shard` runs.
 
 ### Load shapes
 
@@ -168,13 +176,14 @@ random seed per trial.
 ## 8. Acceptance thresholds (set before the formal matrix)
 
 The repository has no service-level objectives, so the thresholds come from engineering requirements alone.
-They were fixed after the calibration runs, which measured noise (about ±7% throughput run to run on this VM),
-and before the formal matrix ran.
+They were fixed after the calibration runs, which showed throughput spreads of up to about ±10% between
+repeated runs on this VM, and before the formal matrix ran. The formal runs confirmed this: the largest
+throughput CV was 10.1%.
 
 A Rust-assisted configuration earns **GO** only if, against the **best** Valkey-native topology on the same
 2 vCPUs, it achieves **all** of:
 
-1. Throughput ≥ 1.20× (2× the calibration noise band, plus margin for running one more component), **or**
+1. Throughput ≥ 1.20× (twice the calibration noise band, so it also pays for running one more component), **or**
    data-service CPU per op ≤ 0.80× at equal or better throughput;
 2. p99 latency no worse than 1.10× at the same offered load (open loop);
 3. Zero errors and timeouts, with no regression in recovery time beyond 1 s;
@@ -189,13 +198,15 @@ Meeting 1–3 but not 4, or meeting them on only some workloads, gives at most *
 make -j"$(nproc)"                                        # Valkey, from the repo root
 cd rust-assessment/bench/rust && cargo build --release   # loadgen, proxy-poc, mapmem
 cargo test --release -p resp-common                      # RESP framing tests
-cd .. && ./run_all.sh                                    # about 2 hours on 4 vCPUs
-./summarize.py                                           # writes ../results/summary.md
+cd .. && ./run_all.sh                                    # about 2.5 hours on 4 vCPUs
+./summarize.py                                           # writes ../results/summary.md and key_tables.md
 ```
 
-Individual suites: `./harness.py list`, `./harness.py run core`, `./recovery.py memory rdb`.
+Individual suites: `./harness.py list`, `./harness.py run core`, `./recovery.py memory rdb`,
+`PERF=/path/to/perf ./profile.sh`, `./conformance.sh`.
 Requirements: Linux, `taskset`, Python 3.8+, 4 or more CPUs (edit `SERVER_CPUS` and `CLIENT_CPUS` in
-`harness.py` for larger hosts). Profiles need `perf`.
+`harness.py` for larger hosts). Profiles need `perf`; conformance needs `tclsh` 8.5+. Raw results are appended,
+so delete `results/raw/` for a clean rerun.
 
 ## 10. Known limitations
 

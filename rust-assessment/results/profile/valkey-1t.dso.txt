@@ -1,0 +1,5 @@
+    70.64%  [kernel.kallsyms]
+    22.49%  valkey-server    
+     6.75%  libc.so.6        
+     0.07%  [unknown]        
+     0.05%  [vdso]           

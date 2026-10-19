@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")"
 ./harness.py env > /dev/null
 ./harness.py crosscheck
-./harness.py run core conns openloop large ttl pipeline cold aof evict churn
+./harness.py run core conns openloop large ttl pipeline cold aof evict churn aof2
 ./recovery.py
 PERF=${PERF:-perf} ./profile.sh
 ./conformance.sh

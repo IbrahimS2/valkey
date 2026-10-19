@@ -1,0 +1,6 @@
+proxy-poc listening on 127.0.0.1:7000 -> 127.0.0.1:6460 (1 upstream conns, 2 threads)
+proxy-stats clients_accepted=0 commands_forwarded=0 commands_refused=0 upstream_writes=0 avg_cmds_per_upstream_write=0.00 upstream_reconnects=0 client_protocol_errors=0
+proxy-stats clients_accepted=51 commands_forwarded=332615 commands_refused=0 upstream_writes=21073 avg_cmds_per_upstream_write=15.78 upstream_reconnects=0 client_protocol_errors=0
+proxy-stats clients_accepted=51 commands_forwarded=658458 commands_refused=0 upstream_writes=40088 avg_cmds_per_upstream_write=16.43 upstream_reconnects=0 client_protocol_errors=0
+proxy-stats clients_accepted=51 commands_forwarded=980773 commands_refused=0 upstream_writes=58272 avg_cmds_per_upstream_write=16.83 upstream_reconnects=0 client_protocol_errors=0
+proxy-stats clients_accepted=51 commands_forwarded=1100439 commands_refused=0 upstream_writes=65565 avg_cmds_per_upstream_write=16.78 upstream_reconnects=0 client_protocol_errors=0

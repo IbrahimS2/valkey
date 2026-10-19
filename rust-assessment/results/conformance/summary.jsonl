@@ -1,0 +1,16 @@
+{"path":"direct","test":"unit/expire","ok":79,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/multi","ok":68,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/protocol","ok":37,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/pubsub","ok":38,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/type/hash","ok":86,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/type/incr","ok":82,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/type/list","ok":284,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"direct","test":"unit/type/string","ok":125,"err":0,"timeout":0,"exception":0,"skip":0,"exception_reason":""}
+{"path":"proxy","test":"unit/expire","ok":39,"err":0,"timeout":1,"exception":0,"skip":0,"exception_reason":""}
+{"path":"proxy","test":"unit/multi","ok":0,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"ERR command not supported through proxy-poc (connection-scoped)."}
+{"path":"proxy","test":"unit/protocol","ok":0,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"I/O error reading reply."}
+{"path":"proxy","test":"unit/pubsub","ok":0,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"ERR command not supported through proxy-poc (connection-scoped)."}
+{"path":"proxy","test":"unit/type/hash","ok":4,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"ERR command not supported through proxy-poc (connection-scoped)."}
+{"path":"proxy","test":"unit/type/incr","ok":27,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"ERR command not supported through proxy-poc (connection-scoped)."}
+{"path":"proxy","test":"unit/type/list","ok":50,"err":0,"timeout":0,"exception":1,"skip":0,"exception_reason":"ERR command not supported through proxy-poc (connection-scoped)."}
+{"path":"proxy","test":"unit/type/string","ok":21,"err":0,"timeout":1,"exception":0,"skip":0,"exception_reason":""}

@@ -131,11 +131,13 @@ def suite_tables(out, name, records, keys, vcpu_hour, title_fn):
             if topo == "valkey-1t":
                 base = s
             out.append(table_row(topo, s))
-        if base and base["ops"]:
+        if base and base["ops"] and len(stats) > 1:
             rel = ", ".join(f"{t}: {s['ops'] / base['ops']:.2f}×" for t, s in stats if t != "valkey-1t")
             line = f"\nThroughput relative to valkey-1t (median/median): {rel}."
+            # Highest throughput wins; at equal throughput (open loop) the
+            # lowest CPU per operation wins.
             best_native = max((s for t, s in stats if t in ("valkey-io2", "valkey-2shard")),
-                              key=lambda s: s["ops"] or 0, default=None)
+                              key=lambda s: (round((s["ops"] or 0) / 1000), -(s["us_op"] or 0)), default=None)
             proxy = next((s for t, s in stats if t == "rust-proxy"), None)
             if proxy and best_native and best_native["ops"]:
                 line += (f" rust-proxy vs best Valkey-native 2-CPU topology: "
@@ -270,6 +272,105 @@ def validity(present):
     return lines
 
 
+TOPOS = ["valkey-1t", "valkey-io2", "valkey-2shard", "rust-proxy"]
+
+
+def stats_by(records, keys, vcpu_hour):
+    return {k: row_stats(rs, vcpu_hour) for k, rs in group(records, keys).items()}
+
+
+def key_tables(vcpu_hour):
+    """Compact cross-suite tables used verbatim in BENCHMARK_RESULTS.md."""
+    out = []
+    core = stats_by(load("core"), ["workload", "topo"], vcpu_hour)
+    if core:
+        out += ["### K1. Saturation throughput and CPU per operation, 50 connections",
+                "",
+                "ops/s median (server CPU µs/op; p99 µs). Best per row in bold.",
+                "",
+                "| workload | " + " | ".join(TOPOS) + " | proxy ÷ best native (throughput, CPU/op) |",
+                "|---|" + "---|" * (len(TOPOS) + 1)]
+        for wl in ("read90", "mixed50", "write90", "skew-read90"):
+            row = {t: core.get((wl, t)) for t in TOPOS}
+            best = max((v["ops"] for v in row.values() if v), default=0)
+            cells = []
+            for t in TOPOS:
+                v = row[t]
+                if not v:
+                    cells.append("–")
+                    continue
+                c = f"{fmt(v['ops'])} ({fmt(v['us_op'], 1)}; {fmt(v['p99'])})"
+                cells.append(f"**{c}**" if v["ops"] == best else c)
+            nat = max((row[t] for t in ("valkey-io2", "valkey-2shard") if row[t]), key=lambda v: v["ops"])
+            px = row["rust-proxy"]
+            out.append(f"| {wl} | " + " | ".join(cells) +
+                       f" | {px['ops'] / nat['ops']:.2f}×, {px['us_op'] / nat['us_op']:.2f}× |")
+        out.append("")
+    conns = stats_by(load("conns"), ["conns", "topo"], vcpu_hour)
+    if conns:
+        merged = dict(conns)
+        for t in TOPOS:
+            if ("read90", t) in core:
+                merged[(50, t)] = core[("read90", t)]
+        out += ["### K2. Concurrency sweep, read90, closed loop",
+                "",
+                "ops/s median (server CPU µs/op; p50 µs). The 50-connection row is the core suite's read90.",
+                "",
+                "| connections | " + " | ".join(TOPOS) + " | proxy ÷ best native (throughput) |",
+                "|---|" + "---|" * (len(TOPOS) + 1)]
+        for c in sorted({k[0] for k in merged}):
+            cells = []
+            for t in TOPOS:
+                v = merged.get((c, t))
+                cells.append(f"{fmt(v['ops'])} ({fmt(v['us_op'], 1)}; {fmt(v['p50'])})" if v else "n/a")
+            nats = [merged[(c, t)] for t in ("valkey-io2", "valkey-2shard") if (c, t) in merged]
+            px = merged.get((c, "rust-proxy"))
+            ratio = f"{px['ops'] / max(n['ops'] for n in nats):.2f}×" if px and nats else "–"
+            out.append(f"| {c} | " + " | ".join(cells) + f" | {ratio} |")
+        out.append("")
+    ol = stats_by(load("openloop"), ["rate", "topo"], vcpu_hour)
+    if ol:
+        out += ["### K3. Latency at fixed offered load (open loop), read90, 50 connections",
+                "",
+                "p50 / p99 / p99.9 µs (server CPU µs/op).",
+                "",
+                "| offered ops/s | " + " | ".join(TOPOS) + " |",
+                "|---|" + "---|" * len(TOPOS)]
+        for r in sorted({k[0] for k in ol}):
+            cells = []
+            for t in TOPOS:
+                v = ol.get((r, t))
+                cells.append(f"{fmt(v['p50'])} / {fmt(v['p99'])} / {fmt(v['p999'])} ({fmt(v['us_op'], 1)})" if v else "–")
+            out.append(f"| {r:,} | " + " | ".join(cells) + " |")
+        out.append("")
+    other = []
+    for suite_name, wl, label in (("large", "large-read90", "16 KiB values, read90"),
+                                  ("ttl", "ttl-mixed50", "SET EX 5, mixed50"),
+                                  ("cold", "cold-read90", "cold cache, read90"),
+                                  ("pipeline", "read90-p16", "client pipeline 16, read90"),
+                                  ("aof", "read90-aof", "AOF everysec, read90"),
+                                  ("aof", "write90-aof", "AOF everysec, write90"),
+                                  ("aof2", "read90-aof", "AOF everysec, read90"),
+                                  ("aof2", "write90-aof", "AOF everysec, write90"),
+                                  ("aof2", "write90-aof-p16", "AOF everysec, write90, pipeline 16"),
+                                  ("evict", "evict-uniform", "maxmemory 256mb LRU, uniform"),
+                                  ("evict", "evict-skew", "maxmemory 256mb LRU, Zipf 0.99"),
+                                  ("churn", "get100-churn", "new connection per request, GET")):
+        st = stats_by([r for r in load(suite_name) if r.get("workload") == wl], ["topo"], vcpu_hour)
+        for (t,), v in st.items():
+            other.append((label, t, v))
+    if other:
+        out += ["### K4. Other scenarios, 50 connections",
+                "",
+                "| scenario | topology | ops/s median [min–max] | server CPU µs/op | p50 µs | p99 µs | hit rate |",
+                "|---|---|---|---|---|---|---|"]
+        for label, t, v in other:
+            out.append(f"| {label} | {t} | {fmt(v['ops'])} [{fmt(v['lo'])}–{fmt(v['hi'])}] | {fmt(v['us_op'], 1)} | "
+                       f"{fmt(v['p50'])} | {fmt(v['p99'])} | {fmt(v['hit'], 3) if v['hit'] is not None else '–'} |")
+        out.append("")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vcpu-hour", type=float, default=0.05,
@@ -285,8 +386,11 @@ def main():
     for name in present:
         for r in load(name):
             if "error" in r:
+                why = r["error"]
+                if r.get("topo") == "valkey-2shard" and r.get("conns", 2) < 2:
+                    why = "not applicable: one connection cannot reach two shards (loadgen refuses it)"
                 failures.append(f"{name}: {r.get('topo')} {r.get('workload')} c={r.get('conns')} "
-                                f"t{r.get('trial')}: {r['error']}")
+                                f"t{r.get('trial')}: {why}")
 
     if "crosscheck" in present:
         out.append("## Load generator cross-check (GET only, valkey-1t, 50 connections)")
@@ -304,6 +408,8 @@ def main():
                      lambda s: f"workload {s[0]}"),
         "cold": ("## Cold cache (empty dataset, read90)", ["topo", "workload"], lambda s: f"workload {s[0]}"),
         "aof": ("## Persistence: AOF everysec", ["topo", "workload"], lambda s: f"workload {s[0]}"),
+        "aof2": ("## Persistence: AOF everysec, Valkey-native comparisons", ["topo", "workload"],
+                 lambda s: f"workload {s[0]}"),
         "evict": ("## Memory pressure: maxmemory 256 MB, allkeys-lru, 5M-key keyspace", ["topo", "workload"],
                   lambda s: f"workload {s[0]}"),
         "churn": ("## Connection churn (valkey-benchmark -k 0: new TCP connection per request, GET)",
@@ -326,6 +432,8 @@ def main():
     out.extend(validity(present))
     out.append("\n## Failed runs\n")
     out.extend(f"- {f}" for f in failures) if failures else out.append("None.")
+    with open(os.path.join(RESULTS, "key_tables.md"), "w") as f:
+        f.write("# Key tables (generated by bench/summarize.py)\n\n" + "\n".join(key_tables(args.vcpu_hour)) + "\n")
     path = os.path.join(RESULTS, "summary.md")
     with open(path, "w") as f:
         f.write("\n".join(out) + "\n")

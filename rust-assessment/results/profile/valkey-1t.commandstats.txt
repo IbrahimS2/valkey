@@ -1,0 +1,10 @@
+# Commandstats
+cmdstat_get:calls=1008362,usec=1863562,usec_per_call=1.85,rejected_calls=0,failed_calls=0
+cmdstat_config|resetstat:calls=1,usec=126,usec_per_call=126.00,rejected_calls=0,failed_calls=0
+total_commands_processed:1008364
+total_net_input_bytes:36301090
+total_net_output_bytes:108903312
+total_net_repl_input_bytes:0
+total_net_repl_output_bytes:0
+total_net_cluster_slot_import_bytes:0
+total_net_cluster_slot_export_bytes:0

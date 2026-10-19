@@ -253,6 +253,8 @@ W = {
     "read90-p16": workload("read90-p16", 0.9, pipeline=16),
     "read90-aof": workload("read90-aof", 0.9, valkey_args=["--appendonly", "yes", "--appendfsync", "everysec"]),
     "write90-aof": workload("write90-aof", 0.1, valkey_args=["--appendonly", "yes", "--appendfsync", "everysec"]),
+    "write90-aof-p16": workload("write90-aof-p16", 0.1, pipeline=16,
+                                valkey_args=["--appendonly", "yes", "--appendfsync", "everysec"]),
     # Preloading 5M keys into 256 MB fills memory first, so the run measures
     # steady-state eviction rather than the fill phase.
     "evict-uniform": workload("evict-uniform", 0.5, keyspace=5_000_000, evicting=True,
@@ -280,6 +282,10 @@ SUITES = {
     "pipeline": suite(["valkey-1t", "valkey-2shard", "rust-proxy"], ["read90-p16"]),
     "openloop": suite(ALL_TOPOS, ["read90"], rates=(20_000, 40_000, 60_000)),
     "aof": suite(["valkey-1t", "rust-proxy"], ["read90-aof", "write90-aof"]),
+    # Added after the first AOF runs: the same workloads on the Valkey-native
+    # 2-CPU topology, and client pipelining with AOF.
+    "aof2": suite(["valkey-2shard"], ["read90-aof", "write90-aof"])
+            + suite(["valkey-1t"], ["write90-aof-p16"]),
     "evict": suite(["valkey-1t"], ["evict-uniform", "evict-skew"]),
     # valkey-benchmark drives one endpoint, so the two-shard topology is not run here.
     "churn": suite(["valkey-1t", "valkey-io2", "rust-proxy"], ["get100-churn"], tool="valkey-benchmark"),

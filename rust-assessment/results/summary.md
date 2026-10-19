@@ -34,33 +34,317 @@ valkey-1t Valkey-side cmds/s (INFO) 84,060; valkey-1t loopback bytes/op 144.5; v
 | valkey-1t | 3 | 73,308 [72,216–74,074] | 1.3% | 594 | 1,964 | 4,706 | 98 | 92 | 13.36 | 25.67 | 0.379 | 0 |
 | valkey-io2 | 3 | 60,457 [59,450–61,004] | 1.3% | 749 | 2,419 | 5,566 | 197 | 87 | 32.55 | 47.16 | 0.459 | 0 |
 | valkey-2shard | 3 | 136,586 [130,899–137,617] | 2.7% | 325 | 997 | 4,342 | 192 | 153 | 14.04 | 25.32 | 0.203 | 0 |
-| rust-proxy | 1 | 86,244 [86,244–86,244] | –% | 522 | 1,753 | 5,370 | 172 | 106 | 19.97 | 32.27 | 0.322 | 0 |
+| rust-proxy | 3 | 81,654 [80,304–86,244] | 3.8% | 562 | 1,656 | 5,186 | 172 | 106 | 21.20 | 33.82 | 0.340 | 0 |
 
-Throughput relative to valkey-1t (median/median): valkey-io2: 0.82×, valkey-2shard: 1.86×, rust-proxy: 1.18×. rust-proxy vs best Valkey-native 2-CPU topology: 0.63× throughput, 1.42× server CPU per op.
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.82×, valkey-2shard: 1.86×, rust-proxy: 1.11×. rust-proxy vs best Valkey-native 2-CPU topology: 0.60× throughput, 1.51× server CPU per op.
 
-valkey-1t Valkey-side cmds/s (INFO) 72,843; valkey-1t loopback bytes/op 146.5; valkey-io2 Valkey-side cmds/s (INFO) 60,698; valkey-io2 loopback bytes/op 146.5; valkey-2shard Valkey-side cmds/s (INFO) 136,923; valkey-2shard loopback bytes/op 146.5; rust-proxy commands per upstream write 12.2; rust-proxy Valkey-side cmds/s (INFO) 86,609; rust-proxy loopback bytes/op 293.0.
+valkey-1t Valkey-side cmds/s (INFO) 72,843; valkey-1t loopback bytes/op 146.5; valkey-io2 Valkey-side cmds/s (INFO) 60,698; valkey-io2 loopback bytes/op 146.5; valkey-2shard Valkey-side cmds/s (INFO) 136,923; valkey-2shard loopback bytes/op 146.5; rust-proxy commands per upstream write 12.3; rust-proxy Valkey-side cmds/s (INFO) 81,823; rust-proxy loopback bytes/op 293.0.
+
+#### workload write90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 74,540 [71,234–80,711] | 6.4% | 580 | 1,879 | 4,899 | 98 | 93 | 13.20 | 25.73 | 0.373 | 0 |
+| valkey-io2 | 3 | 62,769 [62,271–66,810] | 3.9% | 742 | 2,267 | 5,509 | 197 | 88 | 31.34 | 44.68 | 0.443 | 0 |
+| valkey-2shard | 3 | 133,962 [133,126–142,214] | 3.7% | 324 | 1,068 | 3,418 | 192 | 148 | 14.20 | 25.19 | 0.207 | 0 |
+| rust-proxy | 3 | 84,500 [81,617–88,436] | 4.0% | 528 | 1,738 | 4,272 | 172 | 106 | 20.24 | 32.78 | 0.329 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.84×, valkey-2shard: 1.80×, rust-proxy: 1.13×. rust-proxy vs best Valkey-native 2-CPU topology: 0.63× throughput, 1.43× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 74,666; valkey-1t loopback bytes/op 148.5; valkey-io2 Valkey-side cmds/s (INFO) 62,690; valkey-io2 loopback bytes/op 148.5; valkey-2shard Valkey-side cmds/s (INFO) 134,546; valkey-2shard loopback bytes/op 148.5; rust-proxy commands per upstream write 11.8; rust-proxy Valkey-side cmds/s (INFO) 84,902; rust-proxy loopback bytes/op 297.0.
+
+#### workload skew-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 80,529 [79,062–82,645] | 2.2% | 553 | 1,618 | 4,370 | 98 | 107 | 12.24 | 25.12 | 0.345 | 0 |
+| valkey-io2 | 3 | 68,750 [68,253–74,145] | 4.6% | 673 | 1,672 | 4,817 | 197 | 103 | 28.70 | 43.35 | 0.404 | 0 |
+| valkey-2shard ⚠client-bound | 3 | 155,086 [142,593–155,829] | 4.9% | 292 | 799 | 2,468 | 193 | 176 | 12.45 | 23.84 | 0.179 | 0 |
+| rust-proxy | 3 | 96,075 [93,356–99,679] | 3.3% | 481 | 1,201 | 3,588 | 178 | 124 | 18.54 | 31.44 | 0.289 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.85×, valkey-2shard: 1.93×, rust-proxy: 1.19×. rust-proxy vs best Valkey-native 2-CPU topology: 0.62× throughput, 1.49× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 80,219; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 68,250; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 155,001; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 12.9; rust-proxy Valkey-side cmds/s (INFO) 96,248; rust-proxy loopback bytes/op 289.0.
+
+## Concurrency sweep (read90)
+
+#### 1 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 13,946 [13,806–14,699] | 3.4% | 63 | 166 | 531 | 56 | 46 | 40.08 | 72.78 | 1.992 | 0 |
+| valkey-io2 | 3 | 13,128 [12,869–13,257] | 1.5% | 66 | 186 | 931 | 156 | 44 | 118.76 | 152.20 | 2.116 | 0 |
+| rust-proxy | 3 | 6,153 [5,784–6,408] | 5.1% | 150 | 355 | 1,267 | 83 | 23 | 135.55 | 173.59 | 4.515 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.94×, rust-proxy: 0.44×. rust-proxy vs best Valkey-native 2-CPU topology: 0.47× throughput, 1.14× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 13,956; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 13,137; valkey-io2 loopback bytes/op 144.5; rust-proxy commands per upstream write 1.0; rust-proxy Valkey-side cmds/s (INFO) 6,199; rust-proxy loopback bytes/op 289.2.
+
+#### 10 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 50,846 [49,932–50,900] | 1.1% | 182 | 442 | 1,629 | 98 | 78 | 19.31 | 34.55 | 0.546 | 0 |
+| valkey-io2 | 3 | 51,301 [48,686–51,320] | 3.0% | 185 | 425 | 2,057 | 198 | 77 | 38.52 | 54.17 | 0.541 | 0 |
+| valkey-2shard | 3 | 107,388 [101,428–108,641] | 3.6% | 84 | 241 | 1,037 | 192 | 126 | 17.86 | 30.20 | 0.259 | 0 |
+| rust-proxy | 3 | 41,220 [37,101–42,286] | 6.8% | 222 | 563 | 2,292 | 156 | 66 | 38.21 | 54.44 | 0.674 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.01×, valkey-2shard: 2.11×, rust-proxy: 0.81×. rust-proxy vs best Valkey-native 2-CPU topology: 0.38× throughput, 2.14× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 50,684; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 51,156; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 107,718; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 3.3; rust-proxy Valkey-side cmds/s (INFO) 41,219; rust-proxy loopback bytes/op 289.0.
+
+#### 200 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 72,308 [71,564–77,339] | 4.3% | 2,460 | 6,554 | 9,232 | 98 | 90 | 13.61 | 25.74 | 0.384 | 0 |
+| valkey-io2 | 3 | 66,736 [61,084–68,608] | 6.0% | 2,730 | 7,078 | 11,665 | 197 | 92 | 29.56 | 43.41 | 0.416 | 0 |
+| valkey-2shard | 3 | 156,094 [148,682–158,206] | 3.2% | 1,179 | 3,146 | 7,991 | 195 | 163 | 12.50 | 23.25 | 0.178 | 0 |
+| rust-proxy | 3 | 114,057 [107,854–114,458] | 3.3% | 1,647 | 4,633 | 7,901 | 189 | 132 | 16.77 | 28.36 | 0.244 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.92×, valkey-2shard: 2.16×, rust-proxy: 1.58×. rust-proxy vs best Valkey-native 2-CPU topology: 0.73× throughput, 1.34× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 72,070; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 67,376; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 156,583; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 40.0; rust-proxy Valkey-side cmds/s (INFO) 114,318; rust-proxy loopback bytes/op 289.0.
+
+#### 1000 connections
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 58,635 [56,141–58,733] | 2.5% | 15,385 | 33,260 | 45,220 | 98 | 73 | 16.80 | 29.32 | 0.474 | 0 |
+| valkey-io2 | 3 | 53,440 [50,871–55,561] | 4.4% | 17,924 | 31,949 | 43,811 | 197 | 79 | 36.88 | 51.70 | 0.520 | 0 |
+| valkey-2shard | 3 | 124,052 [121,091–130,008] | 3.6% | 7,504 | 17,318 | 24,150 | 195 | 161 | 15.70 | 28.62 | 0.224 | 0 |
+| rust-proxy | 3 | 94,636 [93,357–95,446] | 1.1% | 9,576 | 29,131 | 41,583 | 196 | 136 | 20.58 | 35.24 | 0.294 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.91×, valkey-2shard: 2.12×, rust-proxy: 1.61×. rust-proxy vs best Valkey-native 2-CPU topology: 0.76× throughput, 1.31× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 58,924; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 53,016; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 123,546; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 55.6; rust-proxy Valkey-side cmds/s (INFO) 94,802; rust-proxy loopback bytes/op 289.0.
+
+## Fixed offered load (open loop, read90, 50 connections)
+
+#### offered 20,000 ops/s
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 20,000 [20,000–20,000] | 0.0% | 239 | 1,991 | 5,202 | 38 | 43 | 19.25 | 40.85 | 1.389 | 0 |
+| valkey-io2 | 3 | 19,999 [19,999–20,000] | 0.0% | 181 | 2,593 | 8,610 | 132 | 43 | 65.80 | 86.95 | 1.389 | 0 |
+| valkey-2shard | 3 | 20,000 [19,999–20,000] | 0.0% | 157 | 2,033 | 7,016 | 45 | 45 | 22.35 | 44.85 | 1.389 | 0 |
+| rust-proxy | 3 | 20,000 [19,999–20,000] | 0.0% | 361 | 3,611 | 9,093 | 68 | 40 | 33.95 | 53.85 | 1.389 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rust-proxy: 1.00×. rust-proxy vs best Valkey-native 2-CPU topology: 1.00× throughput, 1.52× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 20,000; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 20,000; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 20,000; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 4.7; rust-proxy Valkey-side cmds/s (INFO) 20,002; rust-proxy loopback bytes/op 289.1.
+
+#### offered 40,000 ops/s
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 40,001 [40,000–40,001] | 0.0% | 322 | 3,391 | 12,894 | 52 | 53 | 12.97 | 26.12 | 0.694 | 0 |
+| valkey-io2 | 3 | 40,000 [39,998–40,001] | 0.0% | 246 | 3,539 | 25,903 | 142 | 55 | 35.58 | 49.35 | 0.694 | 0 |
+| valkey-2shard | 3 | 40,000 [39,999–40,000] | 0.0% | 201 | 2,773 | 7,668 | 59 | 57 | 14.85 | 29.05 | 0.694 | 0 |
+| rust-proxy | 3 | 40,002 [39,999–40,004] | 0.0% | 441 | 4,088 | 13,287 | 85 | 50 | 21.18 | 33.85 | 0.694 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rust-proxy: 1.00×. rust-proxy vs best Valkey-native 2-CPU topology: 1.00× throughput, 1.43× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 40,005; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 40,005; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 39,995; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 7.6; rust-proxy Valkey-side cmds/s (INFO) 40,002; rust-proxy loopback bytes/op 289.0.
+
+#### offered 60,000 ops/s
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 60,001 [59,999–60,004] | 0.0% | 361 | 4,321 | 10,830 | 56 | 58 | 9.25 | 18.92 | 0.463 | 0 |
+| valkey-io2 | 3 | 60,000 [60,000–60,003] | 0.0% | 273 | 5,079 | 14,860 | 148 | 59 | 24.60 | 34.47 | 0.463 | 0 |
+| valkey-2shard | 3 | 60,000 [59,999–60,000] | 0.0% | 224 | 2,568 | 7,414 | 63 | 60 | 10.53 | 20.50 | 0.463 | 0 |
+| rust-proxy | 3 | 60,000 [60,000–60,004] | 0.0% | 484 | 5,235 | 14,213 | 94 | 55 | 15.63 | 24.85 | 0.463 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.00×, valkey-2shard: 1.00×, rust-proxy: 1.00×. rust-proxy vs best Valkey-native 2-CPU topology: 1.00× throughput, 1.48× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 60,000; valkey-1t loopback bytes/op 144.5; valkey-io2 Valkey-side cmds/s (INFO) 59,996; valkey-io2 loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 59,999; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 9.9; rust-proxy Valkey-side cmds/s (INFO) 60,004; rust-proxy loopback bytes/op 289.0.
+
+## Large values (16 KiB, read90)
+
+#### workload large-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 45,074 [44,358–45,799] | 1.6% | 1,026 | 2,707 | 5,214 | 99 | 80 | 21.81 | 39.22 | 0.616 | 0 |
+| valkey-io2 | 3 | 44,540 [44,297–45,485] | 1.4% | 1,057 | 2,357 | 6,554 | 197 | 83 | 44.21 | 62.82 | 0.624 | 0 |
+| valkey-2shard | 3 | 89,273 [87,146–90,703] | 2.0% | 509 | 1,355 | 4,370 | 195 | 141 | 21.88 | 37.37 | 0.311 | 0 |
+| rust-proxy | 3 | 30,935 [29,381–31,816] | 4.0% | 1,506 | 4,268 | 11,379 | 160 | 62 | 52.53 | 72.60 | 0.898 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.99×, valkey-2shard: 1.98×, rust-proxy: 0.69×. rust-proxy vs best Valkey-native 2-CPU topology: 0.35× throughput, 2.40× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 45,046; valkey-1t loopback bytes/op 16,430.4; valkey-io2 Valkey-side cmds/s (INFO) 44,431; valkey-io2 loopback bytes/op 16,430.4; valkey-2shard Valkey-side cmds/s (INFO) 89,165; valkey-2shard loopback bytes/op 16,430.4; rust-proxy commands per upstream write 13.6; rust-proxy Valkey-side cmds/s (INFO) 30,916; rust-proxy loopback bytes/op 32,860.9.
+
+## Short-lived keys (SET EX 5, mixed50, starts empty)
+
+#### workload ttl-mixed50
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 70,570 [70,268–76,758] | 5.1% | 596 | 2,527 | 10,748 | 98 | 86 | 13.87 | 25.62 | 0.394 | 0 |
+| valkey-io2 | 3 | 63,991 [62,366–65,140] | 2.2% | 706 | 2,681 | 10,559 | 197 | 87 | 30.86 | 44.91 | 0.434 | 0 |
+| valkey-2shard | 3 | 130,556 [126,244–141,800] | 6.0% | 338 | 1,030 | 5,337 | 195 | 149 | 14.91 | 26.35 | 0.213 | 0 |
+| rust-proxy | 3 | 86,801 [82,111–87,109] | 3.3% | 509 | 1,920 | 8,610 | 169 | 98 | 19.45 | 30.98 | 0.320 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 0.91×, valkey-2shard: 1.85×, rust-proxy: 1.23×. rust-proxy vs best Valkey-native 2-CPU topology: 0.66× throughput, 1.30× server CPU per op.
+
+valkey-1t hit rate 0.163; valkey-1t expired_keys/run 497,420; valkey-1t Valkey-side cmds/s (INFO) 70,472; valkey-1t loopback bytes/op 110.1; valkey-io2 hit rate 0.149; valkey-io2 expired_keys/run 457,022; valkey-io2 Valkey-side cmds/s (INFO) 64,171; valkey-io2 loopback bytes/op 109.4; valkey-2shard hit rate 0.279; valkey-2shard expired_keys/run 788,032; valkey-2shard Valkey-side cmds/s (INFO) 130,654; valkey-2shard loopback bytes/op 115.7; rust-proxy hit rate 0.195; rust-proxy expired_keys/run 547,294; rust-proxy commands per upstream write 12.7; rust-proxy Valkey-side cmds/s (INFO) 86,530; rust-proxy loopback bytes/op 222.9.
+
+## Client-side pipelining (depth 16, read90)
+
+#### workload read90-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 479,265 [467,514–484,091] | 1.8% | 1,536 | 4,190 | 7,963 | 98 | 44 | 2.04 | 2.95 | 0.058 | 0 |
+| valkey-2shard | 3 | 996,709 [971,596–997,423] | 1.5% | 740 | 2,028 | 4,932 | 196 | 92 | 1.97 | 2.91 | 0.028 | 0 |
+| rust-proxy | 3 | 479,646 [470,429–499,698] | 3.1% | 1,579 | 4,020 | 8,286 | 155 | 55 | 3.26 | 4.41 | 0.058 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-2shard: 2.08×, rust-proxy: 1.00×. rust-proxy vs best Valkey-native 2-CPU topology: 0.48× throughput, 1.66× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 478,300; valkey-1t loopback bytes/op 144.5; valkey-2shard Valkey-side cmds/s (INFO) 997,235; valkey-2shard loopback bytes/op 144.5; rust-proxy commands per upstream write 70.6; rust-proxy Valkey-side cmds/s (INFO) 479,132; rust-proxy loopback bytes/op 289.0.
+
+## Cold cache (empty dataset, read90)
+
+#### workload cold-read90
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 83,924 [83,025–84,071] | 0.7% | 536 | 1,560 | 3,938 | 98 | 95 | 11.68 | 23.10 | 0.331 | 0 |
+| rust-proxy | 3 | 88,616 [83,954–94,250] | 5.8% | 519 | 1,582 | 5,001 | 176 | 107 | 19.82 | 32.04 | 0.313 | 0 |
+
+Throughput relative to valkey-1t (median/median): rust-proxy: 1.06×.
+
+valkey-1t hit rate 0.085; valkey-1t Valkey-side cmds/s (INFO) 83,917; valkey-1t loopback bytes/op 58.5; rust-proxy hit rate 0.089; rust-proxy commands per upstream write 14.0; rust-proxy Valkey-side cmds/s (INFO) 88,698; rust-proxy loopback bytes/op 117.6.
+
+## Persistence: AOF everysec
+
+#### workload read90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 75,327 [71,466–78,839] | 4.9% | 587 | 1,936 | 4,567 | 97 | 88 | 12.93 | 24.59 | 0.369 | 0 |
+| rust-proxy | 3 | 88,381 [87,341–90,518] | 1.8% | 519 | 1,483 | 4,354 | 173 | 103 | 19.53 | 31.33 | 0.314 | 0 |
+
+Throughput relative to valkey-1t (median/median): rust-proxy: 1.17×.
+
+valkey-1t Valkey-side cmds/s (INFO) 75,668; valkey-1t loopback bytes/op 144.5; rust-proxy commands per upstream write 13.2; rust-proxy Valkey-side cmds/s (INFO) 88,172; rust-proxy loopback bytes/op 289.0.
+
+#### workload write90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 47,744 [43,106–52,779] | 10.1% | 701 | 5,902 | 9,937 | 75 | 58 | 15.71 | 27.86 | 0.582 | 0 |
+| rust-proxy | 3 | 58,985 [55,686–59,393] | 3.5% | 626 | 5,022 | 7,803 | 137 | 73 | 23.28 | 35.96 | 0.471 | 0 |
+
+Throughput relative to valkey-1t (median/median): rust-proxy: 1.24×.
+
+valkey-1t Valkey-side cmds/s (INFO) 47,636; valkey-1t loopback bytes/op 148.5; rust-proxy commands per upstream write 10.0; rust-proxy Valkey-side cmds/s (INFO) 58,591; rust-proxy loopback bytes/op 297.0.
+
+## Persistence: AOF everysec, Valkey-native comparisons
+
+#### workload read90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-2shard | 3 | 135,143 [125,192–135,487] | 4.4% | 329 | 1,129 | 4,497 | 191 | 146 | 14.25 | 25.38 | 0.206 | 0 |
+
+valkey-2shard Valkey-side cmds/s (INFO) 135,216; valkey-2shard loopback bytes/op 144.5.
+
+#### workload write90-aof
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-2shard | 3 | 106,744 [102,475–111,173] | 4.1% | 360 | 4,600 | 6,242 | 169 | 124 | 15.72 | 27.29 | 0.260 | 0 |
+
+valkey-2shard Valkey-side cmds/s (INFO) 106,240; valkey-2shard loopback bytes/op 148.5.
+
+#### workload write90-aof-p16
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 190,328 [174,803–193,678] | 5.4% | 2,701 | 19,874 | 48,857 | 65 | 20 | 3.43 | 4.50 | 0.146 | 0 |
+
+valkey-1t Valkey-side cmds/s (INFO) 188,102; valkey-1t loopback bytes/op 148.5.
+
+## Memory pressure: maxmemory 256 MB, allkeys-lru, 5M-key keyspace
+
+#### workload evict-uniform
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 66,341 [64,234–67,681] | 2.6% | 665 | 2,365 | 5,861 | 97 | 80 | 14.67 | 26.73 | 0.419 | 0 |
+
+valkey-1t hit rate 0.322; valkey-1t evicted_keys/run 401,899; valkey-1t Valkey-side cmds/s (INFO) 66,458; valkey-1t loopback bytes/op 111.6.
+
+#### workload evict-skew
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 68,727 [66,573–74,021] | 5.5% | 660 | 1,980 | 4,809 | 98 | 95 | 14.38 | 28.17 | 0.404 | 0 |
+
+valkey-1t hit rate 0.699; valkey-1t evicted_keys/run 197,035; valkey-1t Valkey-side cmds/s (INFO) 68,329; valkey-1t loopback bytes/op 129.9.
+
+## Connection churn (valkey-benchmark -k 0: new TCP connection per request, GET)
+
+#### workload get100-churn
+
+| topology | n | ops/s median [min–max] | CV | p50 µs | p99 µs | p99.9 µs | server-side CPU % | client CPU % | server CPU-s/Mop | total CPU-s/Mop | $/Bop provisioned | errors+timeouts |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| valkey-1t | 3 | 11,977 [11,083–12,503] | 6.1% | 2,247 | 6,375 | 9,855 | 83 | 95 | 71.97 | 151.46 | 2.319 | 0 |
+| valkey-io2 | 3 | 12,878 [12,762–13,087] | 1.3% | 1,879 | 6,983 | 13,439 | 181 | 95 | 140.86 | 215.48 | 2.157 | 0 |
+| rust-proxy | 3 | 12,783 [12,114–13,384] | 5.0% | 1,975 | 6,783 | 10,895 | 150 | 96 | 121.33 | 196.98 | 2.173 | 0 |
+
+Throughput relative to valkey-1t (median/median): valkey-io2: 1.08×, rust-proxy: 1.07×. rust-proxy vs best Valkey-native 2-CPU topology: 0.99× throughput, 0.86× server CPU per op.
+
+valkey-1t Valkey-side cmds/s (INFO) 11,970; valkey-io2 Valkey-side cmds/s (INFO) 12,894; rust-proxy commands per upstream write 2.6; rust-proxy Valkey-side cmds/s (INFO) 12,864.
 
 ## User vs kernel CPU split (core suite, all workloads)
 
 | topology | process | user % | sys % | sys share |
 |---|---|---|---|---|
 | valkey-1t | valkey | 31 | 68 | 69% |
-| valkey-1t | client | 21 | 72 | 77% |
-| valkey-io2 | valkey | 115 | 82 | 42% |
-| valkey-io2 | client | 20 | 69 | 78% |
+| valkey-1t | client | 22 | 72 | 77% |
+| valkey-io2 | valkey | 115 | 81 | 41% |
+| valkey-io2 | client | 21 | 69 | 77% |
 | valkey-2shard | valkey | 30 | 66 | 69% |
-| valkey-2shard | client | 32 | 124 | 80% |
-| rust-proxy | valkey | 20 | 11 | 36% |
-| rust-proxy | proxy | 40 | 101 | 71% |
-| rust-proxy | client | 23 | 83 | 78% |
+| valkey-2shard | client | 32 | 125 | 79% |
+| rust-proxy | valkey | 21 | 11 | 35% |
+| rust-proxy | proxy | 41 | 100 | 71% |
+| rust-proxy | client | 23 | 85 | 78% |
+
+## Memory, startup and recovery
+
+| implementation | keys | value bytes | payload bytes/key | used_memory bytes/key | RSS bytes/key |
+|---|---|---|---|---|---|
+| valkey | 1,000,000 | 100 | 116 | 169.5 | 173.8 |
+| rust-naive-hashmap | 1,000,000 | 100 | 116 | – | 230.0 |
+| valkey | 100,000 | 16,384 | 16400 | 20,533.8 | 20,704.7 |
+| rust-naive-hashmap | 100,000 | 16,384 | 16400 | – | 16,485.8 |
+
+| keys | RDB bytes | SAVE s | restart→ready s (median [min–max]) | logged load s |
+|---|---|---|---|---|
+| 1,000,000 | 31,000,104 | 1.85 | 1.60 [1.57–1.79] | 1.55 |
+| 5,000,000 | 155,000,104 | 8.50 | 8.90 [8.76–9.18] | 8.86 |
+
+AOF (1,000,000 keys, no rewrite): restart→ready median 2.37 s [2.33–2.75], logged load 2.30 s, n=3.
+
+proxy-poc cold start to first PONG: median 29.9 ms; proxy serving again after Valkey restart became ready: median 4.6 ms [4.6, 3.7, 5.0], n=3.
+
+| path | n | ops completed (of 200,000 offered) | errors | timeouts | client connections lost | Valkey restart s |
+|---|---|---|---|---|---|---|
+| direct | 3 | 79,398 | 0 | 0 | 50 | 0.05 |
+| proxy | 3 | 91,460 | 0 | 0 | 45 | 0.06 |
 
 ## Validity checks across all load runs
 
-- loadgen runs checked: 25
+- loadgen runs checked: 198
 - runs where a GET received a non-bulk, non-nil reply (reply misattribution): 0
-- runs flagged client-bound (load generator > 170% CPU): 0
-- client vs Valkey-side (INFO) throughput, absolute difference: median 0.4%, max 1.1% (n=25; open-loop and pipelined runs excluded)
+- runs flagged client-bound (load generator > 170% CPU): 3
+- client vs Valkey-side (INFO) throughput, absolute difference: median 0.2%, max 1.3% (n=186; open-loop and pipelined runs excluded)
 
 ## Failed runs
 
-None.
+- conns: valkey-2shard read90 c=1 t0: not applicable: one connection cannot reach two shards (loadgen refuses it)
+- conns: valkey-2shard read90 c=1 t1: not applicable: one connection cannot reach two shards (loadgen refuses it)
+- conns: valkey-2shard read90 c=1 t2: not applicable: one connection cannot reach two shards (loadgen refuses it)

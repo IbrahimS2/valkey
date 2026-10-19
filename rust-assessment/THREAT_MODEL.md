@@ -34,8 +34,9 @@ transactions.
 | **Spoofing / elevation:** identity collapse | All clients share the upstream identity. Per-user ACLs in Valkey (`ACL SETUSER … ~prefix:* -@dangerous`) can no longer tell clients apart. Every client gets the union of permissions | High | Reimplement ACLs in the proxy, or one upstream pool per ACL user (which reduces multiplexing) | No: AUTH and HELLO are refused |
 | **Information disclosure:** cross-client reply leak | A framing or accounting bug (for example, miscounting the replies to a command) shifts replies by one. Client A then receives client B's data. Without a proxy, a framing bug can only corrupt that one connection | **High**: the worst failure a multiplexer can have | Strict framing, refusing every command whose reply count is not exactly 1, property and fuzz tests on framing, closing the upstream connection on any parse anomaly | Partial: refuses connection-scoped commands, tears down on parse error. No fuzzing done |
 | **Tampering** | Plaintext hop (2) on a network | Medium | TLS (`rustls`) on both hops, or a Unix socket on the same host | No TLS |
+| **Tampering / integrity:** silent backend substitution | When Valkey restarts (or fails over to another node), idle client connections to the proxy stay open. Their next commands go to the new, possibly empty, instance with no error. A direct client would see the disconnect | High for non-cache data (counters, locks, sessions) | Track Valkey's `run_id` and replication offset; disconnect every client when it changes | **No: measured in §6.2** |
 | **Denial of service:** memory | Requests are buffered whole before forwarding, and the in-flight cap counts commands, not bytes. A client can pipeline 1024 × `GET` of large values; the replies sit in an unbounded per-client channel. Valkey's protections (`client-output-buffer-limit`, `maxmemory-clients`, `client-query-buffer-limit`) see only the proxy's one connection | High | Byte-based limits per client and globally, disconnecting slow readers, an equivalent of `client-output-buffer-limit` | Command-count limit only |
-| **Denial of service:** head-of-line blocking | A slow command (large `LRANGE`, `KEYS`, long Lua) or a large reply on a shared upstream connection delays every client multiplexed onto it. Valkey's single main thread already serializes command execution, but a proxy adds a second queue that also serializes reply transfer | Medium | More upstream connections (less batching) or per-command routing | Measured: large-value workload, see results |
+| **Denial of service:** head-of-line blocking | A slow command (large `LRANGE`, `KEYS`, long Lua) or a large reply on a shared upstream connection delays every client multiplexed onto it. Valkey's single main thread already serializes command execution, but a proxy adds a second queue that also serializes reply transfer | Medium | More upstream connections (less batching) or per-command routing | Measured: with 16 KiB values the proxy reached only 0.69× single-threaded Valkey's throughput (BENCHMARK_RESULTS.md §7) |
 | **Denial of service:** proxy crash | A panic or OOM drops every client at once, and the proxy becomes an extra single point of failure | Medium | Supervisor, multiple proxy instances, health checks | Panics abort the task, not the process; there is no supervisor |
 | **Repudiation / audit** | Valkey's `CLIENT LIST`, `MONITOR`, the command log and ACL logs show the proxy, not the real client | Medium | Proxy-side audit logging | No |
 
@@ -117,4 +118,64 @@ implementation was authorized.
 Measured on the same host as the benchmarks. Raw data is in `results/raw/recovery.jsonl` and
 `results/conformance/`.
 
-*(Filled in from the measurement runs; see below.)*
+### 6.1 Conformance: Valkey's own test suite through the proxy
+
+`bench/conformance.sh` runs eight files of Valkey's Tcl test suite in external-server mode (`--singledb`), first
+directly against Valkey, then through `proxy-poc`. In this suite an exception stops the rest of a file, so tests
+after the first refused command never run.
+
+| Test file | Passed direct | Passed through proxy | What stopped the proxy run |
+|---|---|---|---|
+| `unit/type/string` | 125 | 21 | A test that attaches as a replica (`SYNC` refused) hung until timeout |
+| `unit/type/incr` | 82 | 27 | `PSUBSCRIBE` (keyspace-notification test) refused |
+| `unit/type/hash` | 86 | 4 | `HELLO 3` (RESP3) refused |
+| `unit/type/list` | 284 | 50 | `HELLO` (RESP3) refused |
+| `unit/expire` | 79 | 39 | Replication-stream test hung (`SYNC` refused) |
+| `unit/multi` | 68 | 0 | `MULTI` refused |
+| `unit/pubsub` | 38 | 0 | `SUBSCRIBE` refused |
+| `unit/protocol` | 37 | 0 | Connection closed on malformed or inline input |
+| **Total** | **799** | **141 (17.6%)** | |
+
+Every proxy failure was a refusal, a closed connection or a hang. No test that ran got a wrong answer (`[err]`
+count 0), so the prototype fails closed. The suite also uses connection-scoped commands for its own plumbing, so a
+real application would hit fewer of these. The result still rules out any claim of compatibility: whole command
+families (transactions, Pub/Sub, RESP3, replication) do not work through a multiplexer without a substantially
+larger design.
+
+### 6.2 Failure of Valkey under load (`recovery.py failover`)
+
+An open-loop load of 20,000 ops/s ran over 50 connections. Valkey was killed with `SIGKILL` after 4 s and
+restarted at once **without persistence**, so it came back empty. Three trials per path:
+
+| Path | Ops completed (of 200,000 offered) | Client connections that saw the failure | GET hit rate over the whole run | Errors / timeouts |
+|---|---|---|---|---|
+| Direct | 79,404 / 79,398 / 79,395 | 50 / 50 / 50 | 1.000 (no requests after the failure) | 0 / 0 |
+| Through proxy | 79,386 / 120,397 / 91,460 | 50 / **34** / **45** | 1.000 / **0.675** / **0.873** | 0 / 0 |
+
+**Finding: the proxy hides a backend restart from some clients.** Clients with no request in flight when Valkey
+died kept their proxy connection. Their next requests waited in the proxy's queue until it reconnected (about
+5 ms after Valkey was ready), then went to an empty Valkey without any error. With a direct connection, every
+client sees the disconnect and can react: re-warm, re-acquire locks, or treat counters as reset. Behind the
+proxy, in two of three trials, 5 or 16 of the 50 clients silently started reading an empty dataset. For a pure
+cache this only costs misses. For counters, rate limiters, locks or session data it is silent data loss.
+Valkey's `run_id` changes on restart; a production proxy would have to watch it and disconnect every client on
+change, adding still more code.
+
+### 6.3 Recovery timing
+
+| Measurement | Value (median of 3) |
+|---|---|
+| `proxy-poc` cold start to first PONG through it | 29.9 ms |
+| Proxy serving again after a restarted Valkey is ready | 4.6 ms (reconnect backoff starts at 50 ms, but the first retry succeeded) |
+| Valkey restart, RDB load, 1M keys (31 MB RDB) | 1.60 [1.57–1.79] s |
+| Valkey restart, RDB load, 5M keys (155 MB RDB) | 8.90 [8.76–9.18] s |
+| Valkey restart, AOF load (no rewrite), 1M keys | 2.37 [2.33–2.75] s |
+
+The proxy adds little time to recovery itself. Its effect on recovery is the semantic one in §6.2.
+
+### 6.4 Correctness checks during the throughput runs
+
+* Across 198 load-generator runs, every GET reply was a bulk string or nil, so no reply was visibly misattributed.
+  This check is weak: every key holds the same value, so a reply swapped between two GETs would go unnoticed.
+  §4's differential and property tests would be needed for a real claim.
+* Zero RESP errors, zero timeouts, zero lost connections in every throughput run, direct or through the proxy.
