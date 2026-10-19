@@ -251,7 +251,7 @@ be hung by any client in two commands. Two lessons for the decision:
 
 * The correctness evidence for a new server has to include adversarial review and fault-oriented tests, not only
   differential and load tests. That is a recurring cost of Candidate A that Valkey users do not pay
-  (ARCHITECTURE_DECISION.md §7).
+  (ARCHITECTURE_DECISION.md §II.7).
 * The round 1 performance numbers are valid for what they measured. No benchmark sends MULTI with INFO or UNWATCH,
   writes through transactions, half-closes connections, or runs unauthenticated, so the defective paths were never
   on the measured path.
@@ -274,7 +274,8 @@ build uses keyed SipHash anyway, as Valkey does, so that difference no longer ex
 * **With pipelining, user space matters and Valkey's prior optimization shows.** At depth 16 the first build
   spent about 40% of its CPU in hash lookups and key comparisons, against about 6% for Valkey, which prefetches
   keys for a whole batch (`memory_prefetch.c`). Flattening rvk's table helped a little. Batch prefetching was not
-  built, so that gap remains in round 2.
+  built, so lookups and key comparisons are still 54% of rvk-1t's pipelined CPU in round 2. rvk-1t nevertheless
+  reached 0.96–1.14× of Valkey's pipelined throughput there, because it avoids other costs Valkey pays.
 * **"Language is not the lever" survives, with a qualification.** The first build lost to Valkey per core for
-  implementation reasons, and the second closed part of the gap for implementation reasons. Neither result is
-  about Rust. What a multi-threaded architecture can add over one core is measured by R2 and R3, not R1.
+  implementation reasons, and the second reached parity for implementation reasons. Neither result is about
+  Rust. What a multi-threaded architecture can add over one core is measured by R2 and R3, not R1.

@@ -2,6 +2,268 @@
 
 | Field | Value |
 |---|---|
+| Status | **Decided after the reassessment.** A. Rust-native server: **NO-GO**. B. Proxy: **NO-GO**. C. Rust client functionality: **adopt client-side multiplexing from a maintained client (no new code); reject the experimental client-side cache** |
+| Date | 2026-10-19 |
+| Supersedes | The Part I decision record below, which evaluated only the proxy. It is kept as first committed |
+| Scope | Valkey source tree at `741b0159`; `rvk-server` round 1 and round 2 builds; one 4-vCPU KVM guest over loopback, with 2 CPUs for the data service (BENCHMARK_PLAN.md Part II) |
+| Inputs | [REASSESSMENT.md](REASSESSMENT.md), [ARCHITECTURE_COMPARISON.md](ARCHITECTURE_COMPARISON.md), [FEATURE_MATRIX.md](FEATURE_MATRIX.md), [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md) Part II, [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) Part II, [THREAT_MODEL.md](THREAT_MODEL.md) Part II |
+
+# Part II: decision after the reassessment
+
+Labels used below: **measured** (traceable to `results/raw2/` or `results/poc/`), **estimate** (judgment, with its
+basis), and **hypothesis** (plausible, not tested).
+
+## II.1 Decision
+
+| Candidate | What was evaluated | Decision | Deciding evidence |
+|---|---|---|---|
+| **A. Rust-native server** | `rvk-server`: a multi-threaded, lock-sharded server for a declared string-cache scope, built for this purpose (about 4,100 lines of Rust) | **NO-GO** | Pre-registered Gate 3 (round 1): GO conditions met on 0 of 5 points, CONDITIONAL GO conditions on 1 of 5 (3 needed). A post-hoc round 2 after fixes met the CONDITIONAL GO throughput condition on 4 of 5 points but failed its latency condition (p99 1.42× at 20k ops/s), and a post-hoc round cannot overturn round 1 anyway. Gate 4 is unmet: no material advantage over sharding, against a feature gap estimated at 18–29 engineer-quarters |
+| **B. Production proxy** | Part I's prototype, plus a continuity run on the Part II host | **NO-GO** | An architectural CPU floor (REASSESSMENT.md §3.2): no implementation can beat sharding on CPU per operation. Measured today: 0.56× the throughput of two shards at 1.60× their CPU per operation |
+| **C. Rust optimization layer** | The maintained `redis` crate (redis-rs 1.7.1): multiplexed connection and experimental client-side cache | **Adopt multiplexing through a maintained client (Valkey GLIDE, or the multiplexing client of the application's language). Build nothing. Reject the experimental cache** | Multiplexing: 1.70× throughput and −77% server CPU per operation on single-threaded Valkey, with no server change and 0 stale reads. Cache: 1.14× more throughput, 9% more server CPU per operation, and 34% of reads stale |
+
+**In one sentence:** keep Valkey, get more from it with client-side batching (multiplexing, pipelining) and use
+cluster mode to scale out. Neither a Rust server nor a Rust proxy delivered an advantage, on the measured scope,
+that those existing options do not.
+
+**What this NO-GO covers, and what it does not.** It covers `rvk-server` as built: one event loop per thread over
+a shared lock-sharded keyspace, string-cache scope, no persistence, 2 vCPUs for the data service, synthetic
+workloads over loopback. It does not show that no Rust server can outperform Valkey. These were not built or
+measured: shared-nothing thread-per-core designs at high core counts (as in Dragonfly), `io_uring`, batch key
+prefetching in `rvk-server`, and any host with more than 2 server cores. §II.9 names the experiment that would test
+the most promising of these, and the production evidence that would justify running it.
+
+## II.2 Context and assumptions
+
+* The repository is Valkey's source, not a deployment. It records no production workload, configuration, metrics
+  or engineering requirement (ASSESSMENT.md §2). Every workload is synthetic: 100-byte values (16 KiB in one
+  scenario), 1M keys, uniform or Zipf 0.99 access (BENCHMARK_PLAN.md §4).
+* One 4-vCPU KVM guest: data service on CPUs 0–1, load generator on CPUs 2–3, loopback networking. At this size
+  Valkey's `io-threads` is outside its intended regime, so R2 compares `rvk-server` with a weak configuration.
+* Decision thresholds were committed (`da0b089`) before any Part II result file (BENCHMARK_PLAN.md Part II). Round 1
+  is the pre-registered round. Round 2 was designed after seeing round 1 and is reported as post hoc.
+* Part I ran on a different host (Xeon model 85, 2.8 GHz) from Part II (Xeon model 207, 2.1 GHz). Part I and
+  Part II numbers are not compared with each other. Within Part II, baselines moved by up to 16% between rounds,
+  so every ratio uses baselines from the same round.
+
+## II.3 Gates 1–4 by candidate
+
+| Gate | A. `rvk-server` | B. Proxy | C. Client functionality |
+|---|---|---|---|
+| **1. Architectural feasibility** | **Met.** One endpoint served from several cores could plausibly beat Valkey's single-endpoint options and match sharding without client routing (ARCHITECTURE_COMPARISON.md §1.1). Scope declared before building (FEATURE_MATRIX.md) | **Not met for performance.** The proxy terminates every client socket, so it pays the same per-request kernel cost as Valkey, plus a second hop. Its floor (about 14–16 µs/op in Part I) was above two shards' 12.5–14.8 µs/op on the same host. So it was not rebuilt | **Met.** Batching in the client removes per-request system calls at the server without a hop, and maintained implementations exist |
+| **2. Functional validity** | **Met as pre-registered, in both rounds:** 1 differential mismatch in 50,358 cases (`INCRBYFLOAT` formatting, declared partial); concurrency invariants pass at 2 and 4 threads; 0 errors, timeouts or reply misattributions in every run. **But** the round 1 build had two self-deadlocks and a remotely triggerable abort that only code review found (REASSESSMENT.md §7). The round 2 build fixes or documents all 52 confirmed findings, and 22 regression scenarios pass | **Not met as built in Part I.** The proxy hid a backend restart from 16 and 5 of 50 clients, which then ran against an empty server: silent data loss, a blocker under the directive. The defect is fixable. Only 17.6% of Valkey's tests pass through it, because multiplexing breaks connection-scoped commands, which is architectural | **Multiplexing: met.** 0 errors and 0 stale reads in every run. **Cache: not met.** 34% stale reads, caused by a race in the library (REASSESSMENT.md §6.3). That is a blocker for any data where staleness matters |
+| **3. Performance validity** | **Not met.** Round 1 (pre-registered): GO 0 of 5, CONDITIONAL GO 1 of 5. Round 2 (post hoc): GO 0 of 5; CONDITIONAL GO throughput condition 4 of 5, latency condition failed (p99 1.42× the best single-endpoint option at 20k ops/s) | **Not met.** On the Part II host: 0.56× two shards at 1.60× CPU per operation on `read90` | **Multiplexing: met.** The pre-registered adoption bar is ≥ 1.20× throughput or ≥ 20% less server CPU per operation; measured 1.70× and −77%. **Cache: not met.** 1.14× over multiplexing alone, with server CPU per operation 9% higher |
+| **4. Production and economic validity** | **Not met.** Against Valkey's existing scale-out option (sharding or cluster), no material advantage: R3 0.72–1.17 in round 1, 0.85–1.19 in round 2, never ≥ 1.20. The only large measured advantage (R2) is against `io-threads` on 2 vCPUs, outside its regime, and is unverified on 4 or more cores. The measured advantage exists mainly in the unpipelined regime, which Candidate C removes (§II.8). Closing the feature gap is estimated at 18–29 engineer-quarters plus 1–2 FTE ongoing (§II.7). No production workload exists to set against that | **Not met.** More CPU per operation than sharding means negative infrastructure savings, so there is no break-even point (Part I §8) | **Met for multiplexing.** No development; GLIDE is Valkey's own client project with a Rust core. Cost: a client migration, and dedicated connections for connection-scoped commands (THREAT_MODEL.md §8.1). GLIDE itself was not measured here |
+
+## II.4 Evidence summary
+
+All numbers are measured, medians of 3 trials, from BENCHMARK_RESULTS.md Part II. R1 = `rvk-1t` ÷ `valkey-1t`,
+R2 = `rvk-2t` ÷ `valkey-io2`, R3 = `rvk-2t` ÷ `valkey-2shard`.
+
+| Question | Round 1 (pre-registered) | Round 2 (post hoc) |
+|---|---|---|
+| Does Rust help per core? (R1, same architecture and CPU as `valkey-1t`) | No: 0.80–0.91× unpipelined, 0.73–0.96× at depth 16 | Parity: 0.97–1.03× unpipelined, 0.96–1.14× at depth 16, at the same CPU per operation (8.74 vs 8.77 µs on `read90`) |
+| Does one multi-threaded endpoint beat Valkey's single-endpoint option? (R2) | Yes on 2 vCPUs: 2.2–2.8× unpipelined, 1.1–1.9× at depth 16 | Yes: 2.8–3.2× and 1.5–2.9× |
+| Does it beat two shards on the same 2 CPUs? (R3) | No: 0.99–1.17× unpipelined (mostly limited by the load generator), 0.72–0.88× at depth 16 | Roughly level: 1.05–1.19× unpipelined, 0.85–1.06× at depth 16 |
+| p99 at a fixed offered load, `rvk-2t` ÷ best single-endpoint Valkey | 1.58× at 20k ops/s; 0.35× at 60k; 0.66× at 100k | 1.42× at 20k; 0.55× at 60k; 0.33× at 100k |
+| Memory per key (1M × 100 B, both jemalloc) | 172.5 B vs Valkey 169.5 B | 197.6 B (RSS 254.5 B vs 173.7 B) |
+
+| Other measured comparisons | Result |
+|---|---|
+| Pipelining (depth 16) on `valkey-1t`, `read90` | 6.3× (round 1) and 7.9× (round 2) the unpipelined throughput, at 1.13–1.32 µs/op instead of 8.3–8.8 |
+| Multiplexing client (redis-rs, 50 logical clients on one socket) on `valkey-1t` | 1.70× throughput, 8.26 → 1.89 µs/op. On `rvk-2t`: 1.84 µs/op at 191,582 ops/s, no better than `valkey-1t` |
+| 16 KiB values, `read90` | `rvk-2t` 0.97× two shards |
+| `SET EX 5`, `mixed50` | `rvk-2t` 1.27× two shards (higher throughput also keeps more keys alive) |
+| `maxmemory 256mb allkeys-lru`, uniform | Valkey held 1.61M keys, hit rate 0.323; `rvk-1t` round 2 held 1.00M keys, hit rate 0.200 |
+| Low concurrency (1 connection) | `rvk` p50 37–38 µs vs Valkey 42 µs |
+| Startup to first PONG, empty | `rvk` 5.8 ms vs Valkey 37.5 ms |
+| Server killed under load and restarted | Both drop every connection, so clients see the failure, and both come back empty (persistence was off for Valkey; `rvk` has none) |
+| Part I proxy on the Part II host | 132,926 ops/s at 13.18 µs/op vs two shards 236,016 at 8.22 |
+
+## II.5 Performance and resource efficiency: what came from Rust and what from the architecture
+
+| Effect | Source | Evidence |
+|---|---|---|
+| Per-core speed | **Implementation, not language.** Round 1's deficit came from writing replies per connection (33.4% of CPU in the kernel's wakeup path vs Valkey's 18.7%) and from dependent cache misses in lookups. Round 2 copied Valkey's `beforeSleep` write batching and reached parity | Profiles, `results/profile2/`, `results/profile2_r2/`; calibration ladder 520k → 575k → 594k → 861k ops/s (BENCHMARK_RESULTS.md §II.4) |
+| Multi-core single endpoint | **Architecture.** Any thread runs any command under an uncontended shard lock. Valkey's `io-threads` still executes every command on the main thread | R2 1.5–3.2× (round 2) on 2 vCPUs |
+| Two shards versus one multi-threaded endpoint | **Architecture, roughly a draw.** Shards need no locks but need client routing; `rvk` needs locks but serves one endpoint | R3 0.85–1.19× (round 2) |
+| Pipelined lookups | **Valkey's prior optimization.** Valkey prefetches keys for a whole batch (`memory_prefetch.c`); its lookups are about 6% of pipelined CPU. `rvk` does not, and lookups plus key comparisons are 54% of its pipelined CPU | Depth-16 profiles |
+| Bookkeeping | **Feature difference.** About 5% of Valkey's pipelined CPU goes to per-command timing for statistics and slow-command logging, which `rvk` does not have. This favors `rvk` | `getMonotonicUs` 5.0% in the depth-16 profile |
+| Memory safety | **Rust.** 0 memory-safety defects among 52 confirmed review findings in about 4,100 lines. But the defects found (deadlocks, a panic-abort, unbounded resource use, quadratic work) are classes Rust does not prevent | THREAT_MODEL.md §7.4 |
+| Low startup time | **Scope.** `rvk` has no persistence to load and few subsystems to initialize | 5.8 ms vs 37.5 ms |
+
+**Resource costs of `rvk-server` measured here:** about 17% more memory per small key in round 2 (47% more RSS),
+which in a memory-bounded cache means fewer keys held and a lower hit rate; about 100 µs higher p99 than
+single-threaded Valkey for the 2-thread server at low load (cause not investigated; hypothesis: cross-CPU
+wakeups between unpinned workers and lock handoff); and, at depth 16, more CPU per operation than two shards on
+2 of 4 core workloads.
+
+## II.6 Correctness, reliability and security (summary of THREAT_MODEL.md Part II)
+
+* **Candidate A.** No extra hop or secret holder, but every client byte is parsed and executed by new code. The
+  review found two self-deadlocks reachable by any client, a process abort, unbounded memory paths and quadratic
+  CPU paths, all fixed. Remaining known exposures: whole-value copies in `APPEND`/`SETRANGE`, `KEYS` and
+  `FLUSHALL` holding every shard lock, lock-held work stalling other threads, and any remaining panic aborting the
+  process and losing all data. Missing security features: ACL users, TLS, audit and command logs.
+* **Candidate B.** Unchanged from Part I: an extra parser and secret holder, cross-client reply leakage as a new
+  failure class, and connection-scoped semantics lost.
+* **Candidate C.** Multiplexing keeps head-of-line blocking and shared fate inside the application process. The
+  experimental cache serves stale data that can stay stale until LRU eviction or its 30-minute TTL.
+* **Gate 2 was weaker than it looked.** The pre-registered checks were met by a build that any client could hang
+  in two commands. A new server needs adversarial review, fault injection and fuzzing as standing practice, which
+  §II.7 costs.
+
+## II.7 Development and maintenance effort (estimates, not measurements)
+
+What it would take to turn `rvk-server` into a server that could replace Valkey for general use. These are
+judgment estimates by area, based on the gaps in FEATURE_MATRIX.md §8 and on the effort the string-cache scope
+itself took. One engineer-quarter (EQ) is one engineer for three months.
+
+| Area | Estimate | Basis and main risk |
+|---|---|---|
+| Data types (hashes, lists, sets, sorted sets, streams, HyperLogLog, bitmaps, geo) with Valkey's compact encodings and memory efficiency | 4–6 EQ | Each type has dozens of commands with exact reply and error semantics; memory parity needs Valkey's listpack and intset style encodings |
+| Persistence: RDB load and save compatible with Valkey's format, AOF, without `fork()` | 3–5 EQ | Valkey's snapshots rely on `fork()` and one mutating thread. A multi-threaded server needs a new snapshot design (ARCHITECTURE_COMPARISON.md §1.4) |
+| Replication (`PSYNC`, backlog), and Sentinel compatibility | 2–3 EQ | Wire compatibility with Valkey replicas would allow mixed fleets during migration |
+| Cluster mode (slots, cluster bus, `MOVED`/`ASK`, resharding) | 3–5 EQ | Required for scale beyond one host |
+| Lua scripting and Functions | 1–2 EQ | Embedding Lua with Valkey's sandbox and atomicity |
+| ACL users, TLS, Pub/Sub, `CLIENT TRACKING`, keyspace notifications, blocking commands, `SCAN` family | 2–3 EQ | `CLIENT TRACKING` and notifications need cross-thread messaging on the write path |
+| Observability and operations (`INFO` parity, `COMMANDLOG`, `LATENCY`, `MONITOR`, `CONFIG REWRITE`, buffer memory accounting) | 1–2 EQ | Operators expect Valkey's tooling to work unchanged |
+| Hardening: fuzzing, fault injection, passing Valkey's Tcl suite, security review | 2–3 EQ, then continuing | Round 1 showed that differential and load tests alone missed hang and crash defects |
+| **Total to approach feature parity (excluding the Modules API)** | **18–29 EQ** | Valkey's `src/` is about 203k lines of C (ASSESSMENT.md); `rvk-server` covers 61 commands |
+| Ongoing: tracking Valkey's command additions, security patching, on-call | 1–2 FTE | Valkey adds commands and behavior every release |
+| **Recommended alternative:** multiplexing client (GLIDE), pipelining in batch paths, cluster mode | Days to weeks of application and configuration work | Existing, supported software |
+
+## II.8 Infrastructure cost and break-even (computed from measured CPU per operation)
+
+At an assumed $0.05 per vCPU-hour (illustrative, not a quote) and assuming linear scale-out (unverified):
+
+* **Best case for `rvk-2t`** (unpipelined `read90`, round 2): 7.6 vCPUs per 1M ops/s against 8.4 for two shards,
+  a saving of about $27 per month per sustained 1M ops/s (BENCHMARK_RESULTS.md §II.10).
+* **Pipelined:** mixed. Two shards used less CPU per operation on 2 of 4 core workloads (1.15 vs 1.33 µs on
+  `read90`), and `rvk-2t` on the other 2, by 2–6%.
+* **With a multiplexing client:** server CPU per operation fell from 8.26 to 1.89 µs on `valkey-1t`, a saving of
+  77% with no development. `rvk-2t` behind the same client used 1.84 µs, so `rvk`'s unpipelined advantage
+  disappears once clients batch.
+* **Break-even (illustrative):** at an assumed $250k per engineer-year, ongoing maintenance alone (1–2 FTE,
+  about $21k–42k per month) would need roughly 770M–1.5B ops/s of sustained, unpipelined, small-request traffic
+  for the $27 per 1M ops/s saving to pay for it, before any development cost (18–29 EQ, about $1.1M–1.8M at
+  the same rate). A fleet that size would save far more, sooner, by adopting multiplexing clients.
+
+So Candidate A has no break-even point at any realistic scale on this evidence, Candidate B has none at all
+(negative savings), and Candidate C's multiplexing pays back immediately.
+
+## II.9 Migration, rollback, next steps and what would change the decision
+
+**Recommended path (reversible, no new components):**
+
+1. **Adopt a multiplexing client** where the application's request pattern allows it: Valkey GLIDE, or the
+   multiplexing connection of the language's established client. Canary it on one service, compare server CPU
+   per operation and p99 against the current client, and roll back by reverting the client change. Keep
+   transactions, blocking commands and Pub/Sub on dedicated connections.
+2. **Pipeline batch paths** (bulk loads, fan-out reads). Depth 16 gave 6.3–7.9× single-threaded throughput.
+3. **Scale out with cluster mode** and a cluster-aware client. Two shards matched or beat `rvk-2t` on most
+   pipelined points.
+4. **Do not use** redis-rs 1.7.1's experimental client-side cache for data where staleness matters. If
+   client-side caching is wanted, measure GLIDE's implementation for the same race first (not measured here).
+
+**Recommended reporting, not done here because it is an outward-facing action:** the redis-rs `cache-aio`
+insert-after-invalidate race (REASSESSMENT.md §6.3) should be reported to the library's maintainers.
+
+**Evidence that would reopen Candidate A, and the experiment it would justify.** All triggers must hold in a real
+deployment:
+
+| Trigger (measured in production) | Experiment | Success criteria (all required, pre-registered) | Stop condition |
+|---|---|---|---|
+| Valkey nodes CPU-bound on hosts with 4 or more cores; many heterogeneous clients that cannot use cluster mode or multiplexing; a command mix inside, or close to, the string-cache scope | Replicate R2 and R3 on 4, 8 and 16 server cores against `io-threads` at its best thread count and cluster mode with a cluster-aware client. Add batch key prefetching to `rvk-server` and restore the compact table. Estimate: 1–2 engineer-months | R2 ≥ 1.20 against the best `io-threads` setting and R3 ≥ 0.90 on 3 of 5 points; p99 ≤ 1.10× at production offered load; memory per key ≤ 1.05× Valkey's; Gate 2 plus fuzzing and fault injection | `io-threads` at its best setting comes within 1.20×; or the projected saving at the organization's fleet size does not exceed the §II.7 estimate |
+| A capability Valkey lacks that costs several round trips per request | A Rust module (`valkeymodule-rs`) rather than a new server | ≥ 2× fewer round trips per business operation; p99 ≤ 1.0× the current path | A Lua or Functions implementation meets the same targets |
+
+**Evidence that would change the other decisions:**
+
+* **Candidate B:** only a host where per-request kernel cost is much lower than measured here (for example
+  kernel-bypass networking), together with clients that cannot change. Part I §9 gives the sidecar experiment.
+* **Candidate C cache:** a client-side cache measured with no stale reads beyond its documented invalidation
+  delay, on a read-heavy workload over a real network, where saved round trips matter more than they do on
+  loopback.
+* **Candidate C multiplexing:** workloads dominated by blocking commands, large values or long-running commands,
+  where head-of-line blocking on a shared socket would cost more than batching saves.
+
+## II.10 Answers to the nine questions
+
+**1. Was the original proxy a suitable representation of the intended Rust solution?** No, for the question asked;
+yes, for its own candidate. It was a fair test of a multiplexing proxy, and its result stands: that architecture
+loses to sharding on CPU per operation by construction. It was not a Rust server, so it could not show whether a
+Rust server could beat Valkey. Part I's broader claim relied on an Amdahl bound that applies per core, not to a
+multi-threaded single endpoint (REASSESSMENT.md §3, §4.1).
+
+**2. Which limitations were implementation defects, and which were architectural constraints?**
+
+| | Implementation defects (fixable) | Architectural constraints |
+|---|---|---|
+| Proxy (Part I) | No batching in v1 (fixed in Part I); hiding a backend restart from clients | Per-request kernel cost on both hops; an extra hop in latency, bytes and copies; connection-scoped semantics lost under multiplexing; cross-client reply leakage as a failure class |
+| Part I evidence | Open-loop latency inflated by 1 ms pacing ticks and no intended-time latency; unequal allocators in the memory comparison; a near-saturated load generator on the two-shard baseline | – |
+| `rvk-server` round 1 | Per-connection reply writes (wakeup cost); a slab layout with an extra cache miss; 52 review findings including two deadlocks; false sharing on counters and an `Arc` clone per command | – |
+| `rvk-server` round 2 | Missing batch prefetching (a known technique, not built); a vector allocation per command and each key hashed twice; the flattened table's memory cost | `fork()`-based snapshots are unavailable to a multi-threaded mutator; `CLIENT TRACKING` needs cross-thread messaging; lock-held work stalls other threads; a panic aborts the whole process |
+
+Not classified: the 2-thread server's higher p99 at low load, whose cause was not investigated.
+
+**3. Which Rust-based candidate was actually implemented and tested?** Candidate A, `rvk-server`
+(`poc/rvk-server`, about 4,100 lines), in two builds, with a differential test, concurrency invariants, 22
+regression scenarios, Valkey's Tcl tests and unit and property tests. Candidate B was not rebuilt; Part I's
+prototype was re-run for continuity. Candidate C was tested as maintained software (redis-rs 1.7.1) through a
+322-line driver.
+
+**4. How does it compare with tuned Valkey, pipelining and sharding?** Per core it matched Valkey in round 2,
+after being 9–27% slower in round 1. Against `io-threads 2` it was 1.5–3.2× faster on 2 vCPUs. Against two shards
+on the same CPUs it was roughly level: ahead unpipelined, behind or level pipelined, and never 1.20× ahead.
+Pipelining on plain Valkey (6.3–7.9×) and a multiplexing client (1.70×) were each larger gains than anything the
+server change delivered.
+
+**5. What performance improvements were measured, and at what resource cost?** Over Valkey's single-endpoint
+option, R2 1.5–3.2×, at lower CPU per operation (unpipelined `read90`: 7.00 vs 20.80 µs). Over two shards, 1.05–1.19×
+unpipelined at 0.83–0.91× the CPU per operation, with the load generator limiting most of those points. Costs:
+memory per key 197.6 B vs 169.5 B in round 2, a lower hit rate under `maxmemory`, about 100 µs higher p99 at low
+load for the 2-thread server, and the missing features in §II.6–§II.7.
+
+**6. What protocol, correctness, security and recovery requirements remain unmet?** Protocol: RESP2 and RESP3
+for 61 commands only; no other data types, scripting, Pub/Sub, blocking commands, `SCAN` or `CLIENT TRACKING`;
+`INCRBYFLOAT` formatting differs. Correctness: the declared partial behaviors in FEATURE_MATRIX.md §11, and the
+residual exposures in THREAT_MODEL.md §7.3. Security: no ACL users, TLS or audit logging. Recovery: no
+persistence or replication, so every restart is empty; clients are disconnected on failure, as with Valkey.
+
+**7. Are the results sufficiently representative to support the decision?** For a NO-GO on building toward
+production, yes: per core, the result is parity, and against sharding, no candidate reached the pre-registered
+bar. For anything beyond that, no. One 4-vCPU guest over loopback, 2 server CPUs, synthetic workloads, a load
+generator that limited several points, baselines that drifted by up to 16% between rounds, and a post-hoc second
+round. The largest measured advantage (R2) is the least representative, because `io-threads` is outside its
+regime on 2 vCPUs.
+
+**8. What does the evidence justify building next, if anything?** Nothing new. Adopt a maintained multiplexing
+client, pipeline batch paths and use cluster mode (§II.9). If, and only if, a deployment shows the triggers in
+§II.9, run the bounded 4+-core replication experiment described there before any product work.
+
+**9. What exact production evidence would change the recommendation?** For Candidate A: Valkey nodes measured
+CPU-bound on 4 or more cores; clients that cannot use cluster mode or multiplexing; a command mix within or near
+the string-cache scope; and a pre-registered replication on that hardware showing R2 ≥ 1.20 against the best
+`io-threads` setting, R3 ≥ 0.90, p99 ≤ 1.10× at production load and memory per key ≤ 1.05×, with a fleet large
+enough that the projected saving exceeds the §II.7 cost. For B and C, see §II.9.
+
+## II.11 Remaining uncertainties
+
+* Whether `rvk-server`'s lead over `io-threads` survives on 4 or more server cores (not measured; the host has
+  4 vCPUs and the load generator needs 2).
+* How a cluster-aware client (GLIDE) against real Valkey cluster mode compares with client-routed shards (not
+  measured; the shards stand in for it).
+* GLIDE's own multiplexing and client-side cache (not measured; redis-rs stands in).
+* The cause of `rvk-2t`'s higher p99 at low load (not investigated).
+* How much batch prefetching would add to `rvk-server` at depth 16 (hypothesis: most of its remaining pipelined
+  per-core gap to Valkey, given that lookups and key comparisons are 54% of its CPU there).
+* Behavior on real networks, over hours, on a second independent host, and under true overload (the overload
+  suite did not overload anything).
+
+
+# Part I decision record (superseded by Part II above; kept as first committed)
+
+| Field | Value |
+|---|---|
 | Status | **Decided: NO-GO** (implementation not authorized) |
 | Date | 2026-10-19 |
 | Scope | Valkey source tree at `741b0159`; benchmarks on one 4-vCPU KVM host (BENCHMARK_PLAN.md §2) |

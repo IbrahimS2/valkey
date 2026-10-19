@@ -561,7 +561,8 @@ Precise pacing (`--spin-pacing`). p99 µs from the actual send time, with p99 fr
   both rounds and in every trial but one. This was not investigated further. Plausible causes are cross-CPU
   wakeups between rvk's two unpinned worker threads and lock handoff on shared shards. `rvk-1t` has the lowest
   p99 of all at 20k.
-* Near capacity, rvk-2t has the lowest p99 of every configuration.
+* At 60k and 100k ops/s, rvk-2t's p99 was below every single-endpoint Valkey option in both rounds, and below
+  two shards' except at 100k in round 1 (516 against 504 µs).
 * The p50 is 27–50 µs everywhere. Part I's reported p50s of 157–484 µs were produced by its load generator's
   1 ms pacing ticks (REASSESSMENT.md §4.2). With Part I's timer pacing at 60k ops/s, round 1 measured
   `valkey-1t` at p50 242 µs and `rvk-2t` at 122 µs.
@@ -617,9 +618,9 @@ overload. At 300k, p99 was 6.0 ms for `valkey-1t`, 3.7 ms for two shards, 3.0 ms
 * **Startup** to the first PONG with an empty dataset: Valkey 37.5 ms, rvk 5.8 ms (median of 5). rvk has no data
   to load, ever; Valkey with persistence spends seconds loading (Part I: 1.6 s per million keys from RDB).
 * **Failure:** with the server killed under 20k ops/s open-loop load and restarted at once, both lost all 50
-  connections, and the clients saw errors (79.4k of 200k operations completed in both cases). Valkey restarted
-  in 48 ms and rvk in 25 ms, both empty, because persistence was off in this test. Unlike Part I's proxy,
-  neither hides the restart from clients.
+  connections, so the clients saw the failure as dropped connections rather than error replies (79.4k of 200k
+  operations completed in both cases). Valkey restarted in 48 ms and rvk in 25 ms, both empty, because
+  persistence was off in this test. Unlike Part I's proxy, neither hides the restart from clients.
 
 ## II.9 Candidate C: established Rust client functionality (redis-rs 1.7.1, 50 logical clients)
 
@@ -636,9 +637,11 @@ overload. At 300k, p99 was 6.0 ms for `valkey-1t`, 3.7 ms for two shards, 3.0 ms
 * **Multiplexing meets the pre-registered adoption bar:** 1.70× throughput and −77% server CPU per operation on
   `valkey-1t`. The other configurations show the same mechanism. Multiplexing, not a faster server, is what
   removes the per-request system calls.
-* **The client-side cache does not meet it:** 1.14× throughput over multiplexing alone, server CPU per
-  operation unchanged (tracking and invalidation cost about what the cached reads saved), and a third of reads
-  stale. REASSESSMENT.md §6.3 traces the staleness to a race in the library's experimental cache.
+* **The client-side cache does not meet it:** 1.14× throughput over multiplexing alone, and server CPU per
+  client operation 9% *higher* (1.85 against 1.69 µs), although most GETs were served from the cache. The
+  server's total CPU rose from about 34% to 43% of a core, so its key tracking and invalidation work cost more
+  than the cached reads saved. A third of reads were stale. REASSESSMENT.md §6.3 traces the staleness to a race
+  in the library's experimental cache.
 * rsclient's stale-read check needs one writer per key (it compares against the newest acknowledged write). It
   reported 0 stale reads in every run without a cache.
 

@@ -9,7 +9,7 @@ ARCHITECTURE_DECISION.md.
 |---|---|---|---|
 | What | `rvk-server`: a multi-threaded, Valkey-compatible server for a declared string-cache scope | A process between clients and Valkey that multiplexes and pipelines | Client-side functionality in Rust: multiplexed connections, auto-pipelining, client-side caching |
 | Hypothesis | One endpoint served from several cores beats Valkey's single-endpoint options and matches sharding without client routing | Batching inside a proxy reduces Valkey's per-request cost | Batching and caching in the client remove server work entirely |
-| Built in Part II? | **Yes**, about 3,500 lines of Rust | **No**: bounded by Part I measurements (REASSESSMENT.md §3); one continuity run | **No new code**: the maintained `redis` crate (redis-rs 1.7.1) is measured as is |
+| Built in Part II? | **Yes**, about 4,100 lines of Rust including unit tests | **No**: bounded by Part I measurements (REASSESSMENT.md §3); one continuity run | **No new code**: the maintained `redis` crate (redis-rs 1.7.1) is measured as is |
 | Client contract | Unchanged (one endpoint, any Valkey client) | Unchanged | Requires the client library and, for caching, RESP3 |
 
 ## 1. Candidate A: `rvk-server`
@@ -85,7 +85,25 @@ Measured with `rsclient`, a 322-line driver around the `redis` crate 1.7.1. It i
 
 ## 4. Results by candidate
 
-Filled from BENCHMARK_RESULTS.md Part II.
+Measured, from BENCHMARK_RESULTS.md Part II (medians of 3 trials; data service on 2 vCPUs). Round 1 is the
+pre-registered round; round 2 re-measured Candidate A after the review fixes and two profile-guided changes,
+and is post hoc.
+
+| | A. `rvk-server` | B. Proxy | C. redis-rs client functionality |
+|---|---|---|---|
+| Hypothesis held? | **Partly.** It beat Valkey's single-endpoint option (`io-threads 2`) by 1.5–3.2× in round 2, but only roughly matched two shards (R3 0.85–1.19), short of the 1.20 needed | **No.** Its CPU floor sits above sharding's, as predicted (REASSESSMENT.md §3.2) | **Multiplexing: yes.** **Caching: no** |
+| Throughput, `read90`, 50 connections | Round 2: 262,324 ops/s (`rvk-2t`) vs 239,153 for two shards and 110,111 for one Valkey | 132,926 ops/s vs 236,016 for two shards (0.56×) | 200,356 ops/s on one Valkey with all clients on one socket, vs 117,740 with a socket each (1.70×) |
+| Server CPU per operation | 7.00 µs vs 8.10 for two shards, unpipelined; 1.33 vs 1.15 µs at depth 16 | 13.18 µs vs 8.22 (1.60×) | 1.89 µs vs 8.26 (−77%) |
+| Per-core (language and implementation) effect | Round 1: 0.73–0.91× of Valkey. Round 2: 0.96–1.14×, parity. Both came from implementation choices, not the language | – | – |
+| Latency | p99 1.42× single-threaded Valkey at 20k ops/s; below every single-endpoint Valkey option at 60k and 100k | Part I: p99 1.47–2.04× the best Valkey option at every load measured | p99 455 µs vs 848 µs with a socket per client |
+| Memory | Round 1: 172.5 B per key vs Valkey's 169.5 B. Round 2: 197.6 B, so fewer keys held under `maxmemory` | No dataset of its own | Cache: client memory for up to 100,000 entries |
+| Correctness | Gate 2 met in both rounds, but the round 1 build had deadlocks only the review found. All 52 confirmed findings fixed or documented | Part I: hid a backend restart from some clients (silent data loss); 17.6% of Valkey's tests pass through it | Multiplexing: 0 stale reads. Cache: 34% of reads stale, from a library race |
+| Decision (ARCHITECTURE_DECISION.md §II.1) | **NO-GO** | **NO-GO** | **Adopt multiplexing** through a maintained client; **reject** the experimental cache |
+
+What the three results say together: on this budget, the server-side gains a Rust implementation can deliver come
+from architecture (multi-threading behind one endpoint) and from copying Valkey's own techniques (write batching),
+and they are matched by sharding. The largest gain measured anywhere came from batching in the client, which
+needs no new server, no new proxy and no new code.
 
 ## 5. Multi-agent review of `rvk-server`
 

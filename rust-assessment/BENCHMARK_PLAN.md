@@ -297,3 +297,15 @@ data-service CPU per successful operation falls ≥ 20%, with staleness behavior
 provide (Valkey `io-threads`, cluster mode with a cluster-aware client such as GLIDE), and a feature gap that can be
 closed at an estimated cost the advantage pays for. The repository has no production workload, so Gate 4 can at
 best be assessed conditionally.
+
+## II.4 Addendum: measurements added after pre-registration
+
+Everything above in Part II was committed (`da0b089`) before any Part II result file, and is unchanged since. The
+following were added later, and BENCHMARK_RESULTS.md labels their results accordingly:
+
+| Addition | When and why | Status in the decision |
+|---|---|---|
+| `p2-overload` (open loop at 150k and 300k ops/s) | After round 1, to look for overload behavior | Characterization only. It did not overload any configuration |
+| `p2-aof` (Valkey with AOF `everysec`) | After round 1, to show what persistence costs Valkey, since `rvk-server` has none | Characterization only |
+| Round 2: `p2-r2-core`, `p2-r2-core-p16`, `p2-r2-conns`, `p2-r2-openloop`, `p2-r2-evict` (`bench/run_part2_r2.sh`) | After round 1 and the multi-agent review. It re-measures the Gate 3 points after the review fixes and two profile-guided changes, with every baseline re-run in the same window | **Post hoc.** Gate 3's rules are applied to it for information only. It cannot overturn round 1 |
+| `regressions.py` (22 scenarios) | After the review, to reproduce its client-observable findings | Added to the Gate 2 evidence; Gate 2's pre-registered conditions are unchanged |

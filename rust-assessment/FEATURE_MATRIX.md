@@ -126,7 +126,7 @@ review did.
 ## 8. Out of scope (absent by design in this proof of concept)
 
 Each of these exists in Valkey and would be needed by many production deployments. A production decision has to
-cost them (ARCHITECTURE_DECISION.md §7).
+cost them (ARCHITECTURE_DECISION.md §II.7).
 
 | Area | What is missing |
 |---|---|
