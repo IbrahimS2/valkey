@@ -1,0 +1,25 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8620
+Testing unit/type/string
+[ok]: SET and GET an item (0 ms)
+[ok]: SET and GET an empty item (0 ms)
+[ok]: Very big payload in GET/SET (38 ms)
+[ok]: Very big payload random access (3850 ms)
+[ok]: SET 10000 numeric keys and access all them in reverse order (1572 ms)
+[ok]: DBSIZE should be 10000 now (1 ms)
+[exception]: Executing test client: ERR unknown command 'memory', with args beginning with: 'usage' 'key'.
+ in valkey::__dispatch__ at tests/support/valkey.tcl:116
+ in r at tests/test_helper.tcl:196
+ in r at tests/support/server.tcl:625
+ in test at tests/support/test.tcl:262
+ in test at tests/support/server.tcl:620
+ in run_external_server_test at tests/support/server.tcl:460
+ in start_server at tests/support/server.tcl:559
+ in execute_test_file at tests/unit/type/string.tcl:1
+ in execute_test_file at tests/test_helper.tcl:148
+ in test_client_main at tests/test_helper.tcl:717
+ in test_client_main at tests/test_helper.tcl:1146
+ in catch at tests/test_helper.tcl:1146
+ in if at tests/test_helper.tcl:1145
+

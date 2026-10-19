@@ -1,0 +1,96 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8516
+Testing unit/multi
+[ok]: MULTI / EXEC basics (1 ms)
+[ok]: EXEC conditions (1 ms)
+[ok]: EXEC conditions past the static key buffer report the real keys (49 ms)
+[ok]: EXEC IFNE matches a missing key (1 ms)
+[ok]: EXEC NX lazy-deletes expired condition key on primary (51 ms)
+[ok]: EXEC string comparisons return WRONGTYPE for non-string keys (1 ms)
+[ok]: EXEC condition syntax errors abort the transaction (1 ms)
+[ok]: EXEC condition syntax error logs to MONITOR only once (1 ms)
+[ok]: EXEC skips conditions when WATCH already aborted the transaction (1 ms)
+[ok]: EXEC skips conditions when queueing already aborted the transaction (2 ms)
+[ok]: DISCARD (1 ms)
+[ok]: Nested MULTI are not allowed (1 ms)
+[ok]: MULTI where commands alter argc/argv (1 ms)
+[ok]: WATCH inside MULTI is not allowed (1 ms)
+[ok]: EXEC fails if there are errors while queueing commands #1 (1 ms)
+[ok]: EXEC fails if there are errors while queueing commands #2 (1 ms)
+[ok]: If EXEC aborts, the client MULTI state is cleared (1 ms)
+[ok]: EXEC works on WATCHed key not modified (1 ms)
+[ok]: EXEC fail on WATCHed key modified (1 key of 1 watched) (0 ms)
+[ok]: EXEC fail on WATCHed key modified (1 key of 5 watched) (0 ms)
+[ok]: EXEC fail on WATCHed key modified by SORT with STORE even if the result is empty (1 ms)
+[ok]: EXEC fail on lazy expired WATCHed key (103 ms)
+[ok]: WATCH stale keys should not fail EXEC (3 ms)
+[ok]: Delete WATCHed stale keys should not fail EXEC (4 ms)
+[ok]: FLUSHDB while watching stale keys should not fail EXEC (3 ms)
+[ok]: After successful EXEC key is no longer watched (0 ms)
+[ok]: After failed EXEC key is no longer watched (0 ms)
+[ok]: It is possible to UNWATCH (0 ms)
+[ok]: UNWATCH when there is nothing watched works as expected (0 ms)
+[ok]: FLUSHALL is able to touch the watched keys (0 ms)
+[ok]: FLUSHALL does not touch non affected keys (0 ms)
+[ok]: FLUSHDB is able to touch the watched keys (0 ms)
+[ok]: FLUSHDB does not touch non affected keys (1 ms)
+[ok]: SWAPDB is able to touch the watched keys that exist (1 ms)
+[ignore]: SWAPDB is able to touch the watched keys that do not exist: Not supported on singledb
+[ignore]: SWAPDB does not touch watched stale keys: Not supported on singledb
+[ignore]: SWAPDB does not touch non-existing key replaced with stale key: Not supported on singledb
+[ignore]: SWAPDB does not touch stale key replaced with another stale key: Not supported on singledb
+[ignore]: WATCH is able to remember the DB a key belongs to: Not supported on singledb
+[ok]: WATCH will consider touched keys target of EXPIRE (1 ms)
+[ok]: WATCH will consider touched expired keys (1109 ms)
+[ok]: WATCH same key multiple times should be fine (1 ms)
+[ignore]: WATCH same key name in different DBs: Not supported on singledb
+[ok]: WATCH with large number of keys (103 ms)
+[ok]: DISCARD should clear the WATCH dirty flag on the client (1 ms)
+[ok]: DISCARD should UNWATCH all the keys (1 ms)
+[ok]: MULTI / EXEC is not propagated (single write command) (34 ms)
+[ok]: MULTI / EXEC is propagated correctly (multiple commands) (101 ms)
+[ignore]: MULTI / EXEC is propagated correctly (multiple commands with SELECT): Not supported on singledb
+[ok]: MULTI / EXEC is propagated correctly (empty transaction) (99 ms)
+[ok]: MULTI / EXEC is propagated correctly (read-only commands) (102 ms)
+[ok]: MULTI / EXEC is propagated correctly (write command, no effect) (100 ms)
+[ok]: MULTI / EXEC with REPLICAOF (102 ms)
+[ok]: DISCARD should not fail during OOM (2 ms)
+[ok]: MULTI and script timeout (408 ms)
+[ok]: EXEC and script timeout (405 ms)
+[ok]: MULTI-EXEC body and script timeout (405 ms)
+[ok]: just EXEC and script timeout (403 ms)
+[ok]: exec with write commands and state change (2 ms)
+[ok]: exec with read commands and stale replica state change (4 ms)
+[ok]: EXEC with only read commands should not be rejected when OOM (1 ms)
+[ok]: EXEC with at least one use-memory command should fail (1 ms)
+[ok]: Blocking commands ignores the timeout (1 ms)
+[ok]: MULTI propagation of PUBLISH (91 ms)
+[ok]: MULTI propagation of SCRIPT LOAD (99 ms)
+[ok]: MULTI propagation of EVAL (100 ms)
+[ok]: MULTI propagation of SCRIPT FLUSH (101 ms)
+[ok]: MULTI propagation of XREADGROUP (101 ms)
+[ok]: MULTI with SAVE (1 ms)
+[ok]: MULTI with SHUTDOWN (1 ms)
+[ignore]: MULTI with BGREWRITEAOF: Not supported on external server
+[ignore]: MULTI with config set appendonly: Not supported on external server
+[ok]: MULTI with config error (1 ms)
+[ok]: Flushall while watching several keys by one client (1 ms)
+[ok]: MULTI is rejected when CLIENT REPLY is ON/OFF/SKIP (3 ms)
+[ok]: CLIENT REPLY OFF/SKIP: multi command (87 ms)
+[ok]: AUTH errored inside MULTI will add the reply (1 ms)
+[ignore]: Not supported on external server
+[ignore]: Not supported on external server
+[ignore]: Not supported on external server
+[1/1 done]: unit/multi (4 seconds)
+
+                   The End
+
+Execution time of different units:
+  4 seconds - unit/multi
+
+Test Summary: 68 passed, 0 failed
+
+\o/ All tests passed without errors!
+
+Cleanup: may take some time... OK

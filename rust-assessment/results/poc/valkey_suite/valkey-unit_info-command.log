@@ -1,0 +1,22 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8592
+Testing unit/info-command
+Testing Valkey version 7.2.4 (741b0159)
+[ok]: Extract version and sha1 details from info command and print (0 ms)
+[ok]: info command with at most one sub command (2 ms)
+[ok]: info command with one sub-section (1 ms)
+[ok]: info command with multiple sub-sections (1 ms)
+[ok]: info command includes used_active_time_main_thread field (1 ms)
+[1/1 done]: unit/info-command (0 seconds)
+
+                   The End
+
+Execution time of different units:
+  0 seconds - unit/info-command
+
+Test Summary: 5 passed, 0 failed
+
+\o/ All tests passed without errors!
+
+Cleanup: may take some time... OK

@@ -2,3 +2,5 @@
 bench/rust/target/
 # Rust build output for the PoC workspace.
 poc/target/
+# The repository root ignores *-server binaries; this is a source directory.
+!/poc/rvk-server/

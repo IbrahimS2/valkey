@@ -1,0 +1,99 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8467
+Testing unit/expire
+[ok]: EXPIRE - set timeouts multiple times (1 ms)
+[ok]: EXPIRE - It should be still possible to read 'x' (0 ms)
+[ok]: EXPIRE - After 2.1 seconds the key should no longer be here (2102 ms)
+[ok]: EXPIRE - write on expire should work (1 ms)
+[ok]: EXPIREAT - Check for EXPIRE alike behavior (0 ms)
+[ok]: SETEX - Set + Expire combo operation. Check for TTL (0 ms)
+[ok]: SETEX - Check value (1 ms)
+[ok]: SETEX - Overwrite old key (0 ms)
+[ok]: SETEX - Wait for the key to expire (1101 ms)
+[ok]: SETEX - Wrong time parameter (1 ms)
+[ok]: PERSIST can undo an EXPIRE (0 ms)
+[ok]: PERSIST returns 0 against nonexistent or non volatile keys (1 ms)
+[ok]: EXPIRE precision is now the millisecond (1103 ms)
+[ok]: PSETEX can set sub-second expires (102 ms)
+[ok]: PEXPIRE can set sub-second expires (102 ms)
+[ok]: PEXPIREAT can set sub-second expires (204 ms)
+[ok]: EXPIRE / EXPIREAT / PEXPIRE / PEXPIREAT Expiration time is already expired (3 ms)
+[ok]: TTL returns time to live in seconds (1 ms)
+[ok]: PTTL returns time to live in milliseconds (1 ms)
+[ok]: TTL / PTTL / EXPIRETIME / PEXPIRETIME return -1 if key has no expire (1 ms)
+[ok]: TTL / PTTL / EXPIRETIME / PEXPIRETIME return -2 if key does not exit (0 ms)
+[ok]: EXPIRETIME returns absolute expiration time in seconds (0 ms)
+[ok]: PEXPIRETIME returns absolute expiration time in milliseconds (0 ms)
+[ok]: Server should actively expire keys incrementally (605 ms)
+[ok]: Server should lazy expire keys (1003 ms)
+[ok]: EXPIRE should not resurrect keys (issue #1026) (1002 ms)
+[ok]: 5 keys in, 5 keys out (1 ms)
+[ok]: EXPIRE with empty string as TTL should report an error (0 ms)
+[ok]: SET with EX with big integer should report an error (0 ms)
+[ok]: SET with EX with smallest integer should report an error (0 ms)
+[ok]: GETEX with big integer should report an error (0 ms)
+[ok]: GETEX with smallest integer should report an error (0 ms)
+[ok]: GETEX and SET with relative expire overflow when basetime is added (2 ms)
+[ok]: GETEX with error expiration time (2 ms)
+[ok]: EXPIRE with big integer overflows when converted to milliseconds (2 ms)
+[ok]: PEXPIRE with big integer overflow when basetime is added (1 ms)
+[ok]: EXPIRE with big negative integer (1 ms)
+[ok]: PEXPIREAT with big integer works (1 ms)
+[ok]: PEXPIREAT with big negative integer works (0 ms)
+[ignore]: Not supported on external server
+[ok]: All TTL in commands are propagated as absolute timestamp in replication stream (9 ms)
+[ignore]: Not supported on external server
+[ok]: SET command will remove expire (0 ms)
+[ok]: SET - use KEEPTTL option, TTL should not be removed (1 ms)
+[ok]: SET - use KEEPTTL option, TTL should not be removed after loadaof (2004 ms)
+[ok]: GETEX use of PERSIST option should remove TTL (1 ms)
+[ok]: GETEX use of PERSIST option should remove TTL after loadaof (1 ms)
+[ok]: GETEX propagate as to replica as PERSIST, UNLINK, or nothing (101 ms)
+[ok]: EXPIRE with NX option on a key with ttl (0 ms)
+[ok]: EXPIRE with NX option on a key without ttl (1 ms)
+[ok]: EXPIRE with XX option on a key with ttl (1 ms)
+[ok]: EXPIRE with XX option on a key without ttl (1 ms)
+[ok]: EXPIRE with GT option on a key with lower ttl (0 ms)
+[ok]: EXPIRE with GT option on a key with higher ttl (0 ms)
+[ok]: EXPIRE with GT option on a key without ttl (0 ms)
+[ok]: EXPIRE with LT option on a key with higher ttl (0 ms)
+[ok]: EXPIRE with LT option on a key with lower ttl (0 ms)
+[ok]: EXPIRE with LT option on a key without ttl (0 ms)
+[ok]: EXPIRE with LT and XX option on a key with ttl (0 ms)
+[ok]: EXPIRE with LT and XX option on a key without ttl (1 ms)
+[ok]: EXPIRE with conflicting options: LT GT (1 ms)
+[ok]: EXPIRE with conflicting options: NX GT (0 ms)
+[ok]: EXPIRE with conflicting options: NX LT (1 ms)
+[ok]: EXPIRE with conflicting options: NX XX (0 ms)
+[ok]: EXPIRE with unsupported options (0 ms)
+[ok]: EXPIRE with unsupported options (0 ms)
+[ok]: EXPIRE with negative expiry (1 ms)
+[ok]: EXPIRE with negative expiry on a non-volatile key (1 ms)
+[ok]: EXPIRE with non-existed key (1 ms)
+[ok]: Server should not propagate the read command on lazy expire (85 ms)
+[ok]: SCAN: Lazy-expire should not be wrapped in MULTI/EXEC (101 ms)
+[ok]: RANDOMKEY: Lazy-expire should not be wrapped in MULTI/EXEC (101 ms)
+[ok]: import-source can be closed when import-mode is off (1 ms)
+[ok]: Import mode should forbid active expiration (112 ms)
+[ok]: Import mode should forbid lazy expiration (12 ms)
+[ok]: Client can visit expired key in import-source state (112 ms)
+[ok]: Negative ttl will not cause server to crash when import mode is on (102 ms)
+[ok]: RESET clears the import-source flag (1 ms)
+[ok]: RESET drops import-source expiration semantics (113 ms)
+[ignore]: Not supported on external server
+[ok]: replicaKeysWithExpire memory leak verification and cleanup (0 ms)
+[ok]: Active expiration triggers hashtable shrink (164 ms)
+[ignore]: Not supported on external server
+[1/1 done]: unit/expire (10 seconds)
+
+                   The End
+
+Execution time of different units:
+  10 seconds - unit/expire
+
+Test Summary: 79 passed, 0 failed
+
+\o/ All tests passed without errors!
+
+Cleanup: may take some time... OK

@@ -1,0 +1,22 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8664
+Testing unit/expire
+[ok]: EXPIRE - set timeouts multiple times (1 ms)
+[ok]: EXPIRE - It should be still possible to read 'x' (1 ms)
+[ok]: EXPIRE - After 2.1 seconds the key should no longer be here (2103 ms)
+[exception]: Executing test client: ERR unknown command 'lpush', with args beginning with: 'x' 'foo'.
+ in valkey::__dispatch__ at tests/support/valkey.tcl:116
+ in r at tests/test_helper.tcl:196
+ in r at tests/support/server.tcl:583
+ in test at tests/support/test.tcl:262
+ in test at tests/support/server.tcl:581
+ in run_external_server_test at tests/support/server.tcl:460
+ in start_server at tests/support/server.tcl:559
+ in execute_test_file at tests/unit/expire.tcl:1
+ in execute_test_file at tests/test_helper.tcl:148
+ in test_client_main at tests/test_helper.tcl:717
+ in test_client_main at tests/test_helper.tcl:1146
+ in catch at tests/test_helper.tcl:1146
+ in if at tests/test_helper.tcl:1145
+

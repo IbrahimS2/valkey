@@ -1,0 +1,43 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8773
+Testing unit/info-command
+[exception]: Executing test client: can't read "version": no such variable.
+can't read "version": no such variable
+    while executing
+"puts "Testing Valkey version $version ($sha1)""
+    ("uplevel" body line 5)
+    invoked from within
+"uplevel 1 $code"
+    (procedure "error" line 63)
+    invoked from within
+"error $error $::errorInfo"
+    (procedure "test" line 95)
+    invoked from within
+"test "Extract version and sha1 details from info command and print" {
+        set i [r info]
+        regexp {redis_version:(.*?)\r\n} $i - version
+   ..."
+    ("uplevel" body line 2)
+    invoked from within
+"uplevel 2 $code"
+    (procedure "error" line 41)
+    invoked from within
+"error $error $::errorInfo"
+    (procedure "run_external_server_test" line 52)
+    invoked from within
+"run_external_server_test $code $overrides"
+    (procedure "start_server" line 73)
+    invoked from within
+"start_server {tags {"info and its relative command"}} {
+    test "Extract version and sha1 details from info command and print" {
+        set i [r inf..."
+    (file "tests/unit/info-command.tcl" line 1)
+    invoked from within
+"source $path"
+    (procedure "execute_test_file" line 6)
+    invoked from within
+"execute_test_file $data"
+    (procedure "test_client_main" line 10)
+    invoked from within
+"test_client_main $::test_server_port "
