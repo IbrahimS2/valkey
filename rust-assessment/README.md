@@ -14,8 +14,8 @@ It has two parts:
 
 | Candidate | Decision | One-line reason |
 |---|---|---|
-| A. Rust-native server (`rvk-server`) | **NO-GO** | Per core it matched Valkey at best. On the same 2 CPUs it roughly matched two Valkey shards and never beat them by the pre-registered 20% |
-| B. Production proxy | **NO-GO** | Its CPU floor is above sharding's by construction. Measured today: 0.56× two shards' throughput at 1.60× their CPU per operation |
+| A. Rust-native server (`rvk-server`) | **NO-GO** | Per core it matched Valkey at best on the pre-registered points. On the same 2 CPUs it roughly matched two Valkey shards and beat them by the pre-registered 20% at none of the 5 Gate 3 points (outside them: 1.29× at 10 connections, 1.27× on `SET EX 5`) |
+| B. Production proxy | **NO-GO** | On the measured host its CPU floor is above sharding's by construction. Measured today: 0.56× two shards' throughput at 1.60× their CPU per operation |
 | C. Rust optimization layer | **Adopt client multiplexing through a maintained client (no new code). Reject the experimental client-side cache** | Multiplexing gave 1.70× throughput and −77% server CPU per operation. The cache served stale data on 34% of reads |
 
 The NO-GO covers the candidates as built, on one 4-vCPU host with synthetic workloads. It does not show that no
@@ -46,9 +46,14 @@ estimates and the evidence that would change the decision are in
   the same round.
 * **Round 2 is post hoc.** It re-measured the Gate 3 points after the review fixes and two profile-guided
   changes, which were chosen after seeing round 1. It cannot change the pre-registered round 1 decision.
-* **Suites added after pre-registration** are labeled as such: `p2-overload`, `p2-aof`, and the round 2 suites.
+* **Suites and methods added after pre-registration** are labeled as such: `p2-overload`, `p2-aof`, the round 2
+  suites, and the switch to precise open-loop pacing (BENCHMARK_PLAN.md §II.4).
 * **No raw data was edited.** Part I's `results/raw/` is unchanged. Round 1 artifacts that round 2 replaced are
   kept under `*_round1*` names.
+* **Corrections after review.** A multi-agent fact-check of these documents against the raw data confirmed 51
+  reports of errors in the text (fewer distinct errors, because the checkers overlapped). Examples: review-finding
+  counts, the size of baseline drift between rounds, and ranges stated without their scope. All were corrected;
+  no measurement changed.
 
 ## Directory map
 
@@ -64,7 +69,7 @@ estimates and the evidence that would change the decision are in
 | `bench/summarize.py`, `bench/summarize_part2.py` | Generate the tables in `results/` from the raw data |
 | `bench/rust/` | `loadgen` (load generator with open and closed loop, precise pacing, intended-time latency), `proxy-poc` (Candidate B, benchmark-only), `mapmem`, `resp-common` |
 | `results/raw/`, `results/summary.md`, `results/key_tables.md` | Part I raw data (one JSON record per run) and generated tables |
-| `results/raw2/`, `results/summary_part2.md`, `results/key_tables_part2.md` | Part II raw data, generated tables and Gate 3 evaluated by code. `raw2/dev/` holds smoke and calibration runs, which are not formal results. `raw2/run_part2*.txt` are the run logs |
+| `results/raw2/`, `results/summary_part2.md`, `results/key_tables_part2.md` | Part II raw data, generated tables and Gate 3 evaluated by code. `raw2/p2-smoke.jsonl` and `raw2/dev/` hold smoke and calibration runs, which are not formal results. `raw2/run_part2*.txt` are the run logs |
 | `results/environment*.json` | Host, kernel, CPU and binary hashes for Part I, Part II round 1 and round 2 |
 | `results/profile/`, `results/profile2/`, `results/profile2_r2/` | `perf` profiles for Part I, Part II round 1 and round 2 |
 | `results/poc/` | Correctness evidence: differential, concurrency, regressions, Tcl suite, eviction stress, review findings, and their round 1 versions |
@@ -129,7 +134,7 @@ allkeys-lru`, and `rvk-server` with 2 and 4 threads, each with and without the s
 
 ```sh
 ./run_all.sh            # Part I: about 2 hours; writes results/raw and the Part I tables
-./run_part2.sh          # Part II round 1, pre-registered matrix: about 2.5 hours
+./run_part2.sh          # Part II round 1, pre-registered matrix: about 2.5 hours (see the note below)
 ./run_part2_post.sh     # overload and AOF suites, profiles, memory, startup, failover: about 25 minutes
 ./run_part2_r2.sh       # Part II round 2, post hoc: about 85 minutes
 ./summarize_part2.py    # regenerate results/key_tables_part2.md and summary_part2.md
@@ -137,8 +142,16 @@ allkeys-lru`, and `rvk-server` with 2 and 4 threads, each with and without the s
 
 Single suites: `./harness.py list`, then for example `./harness.py run p2-core`. A smoke test first is
 recommended: `./harness.py run p2-smoke`. An interrupted run can continue with `./harness.py run --resume
-SUITE`, which skips runs already recorded. `./harness.py env --part2` records the environment, and should be
-compared with `results/environment_part2*.json` before reading any comparison as a reproduction.
+SUITE`, which skips runs already recorded.
+
+**Which binaries.** Building at HEAD gives the round 2 `rvk-server` and `rsclient`, which `run_part2_r2.sh` uses.
+To reproduce round 1, build `rust-assessment/poc` from commit `92febac` first (the `git_head` recorded in
+`results/environment_part2.json`; `poc/` is unchanged from there through `4cda2f7`).
+
+**Check the environment.** `./harness.py env --part2` and the run scripts overwrite
+`results/environment_part2*.json`. Copy those files aside before rerunning (or compare against `git show
+HEAD:rust-assessment/results/environment_part2.json` and `..._r2.json`), and compare host and binary hashes before
+reading any comparison as a reproduction.
 
 ## How to read the results
 

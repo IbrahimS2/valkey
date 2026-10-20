@@ -38,8 +38,9 @@ a Part I number was misleading, the Part I tables are left as they were and this
 
    Decision thresholds were committed (`da0b089`) before any measurement of these candidates.
 6. **The first `rvk-server` build passed every pre-registered correctness check and still had defects that
-   could hang or crash it.** A multi-agent code review found 52 confirmed defects after the round 1
-   measurements, two of them self-deadlocks (§7). All are fixed or documented, and a regression suite now
+   could hang or crash it.** A multi-agent code review found 52 confirmed correctness and security findings
+   after the round 1 measurements (fewer distinct defects, because reviewers overlapped), two of them
+   self-deadlocks (§7). All are fixed or documented, and a regression suite now
    reproduces them against Valkey. The round 1 performance numbers stand, because no benchmark exercised those
    paths. But "passed Gate 2" turned out to be weaker evidence than it sounds.
 7. **The profiles explained the first build's per-core deficit, and fixing it was an implementation matter.**
@@ -59,13 +60,15 @@ a Part I number was misleading, the Part I tables are left as they were and this
   therefore produced by a single agent, without the independent cross-checking a workflow would have provided.
   After the limit reset, a read-only multi-agent review of `rvk-server` ran in five dimensions (concurrency,
   protocol and I/O, command semantics, security, benchmark fairness). Each dimension had an adversarial verifier.
-  Its confirmed findings and their handling are in §6.
+  Its confirmed findings and their handling are in §7.
 * **The host changed between Part I and Part II.** The container was rescheduled. Part I ran on an
   Intel Xeon at 2.8 GHz (model 85, 33 MB L3) with Retbleed, TAA and MMIO-stale-data mitigations active. Part II
   runs on an Intel Xeon at 2.1 GHz (model 207, 260 MB L3) that reports itself not affected by those. Both are
-  KVM guests with 4 vCPUs, the same kernel and the same binaries (`results/environment.json`,
-  `results/environment_part2.json`). On Part II's host every baseline is 1.3–1.8× faster (for example
-  `valkey-1t` GET-only went from 78.5k to about 125k ops/s). **Part I and Part II numbers must not be compared
+  KVM guests with 4 vCPUs and the same kernel, running the same `valkey-server`, `valkey-benchmark` and
+  `proxy-poc` binaries (`loadgen` was rebuilt for Part II with precise pacing; `results/environment.json`,
+  `results/environment_part2.json`). On Part II's host most baselines are 1.4–1.8× faster (for example
+  `valkey-1t` GET-only with loadgen went from 78.5k to 116.6k ops/s); the connection-churn baselines, which are
+  limited by client connection setup, rose only 1.1–1.2×. **Part I and Part II numbers must not be compared
   with each other.** Every Part II comparison uses baselines re-run in the same Part II matrix, on the same
   host, interleaved by trial.
 
@@ -137,9 +140,10 @@ already provides it" did not cover every architecture. Part II builds the missin
   topologies under the same arrivals and still stand as relative statements. They are not evidence about
   latency under smooth load.
 * **Part II** reports both the actual-send and intended-send latency. It uses `--spin-pacing` for every
-  open-loop point, plus timer pacing at one rate for continuity. Spin pacing still has a p99 send lag of about
-  0.75 ms on this host (the client spins at about 195% CPU), so intended-time p99 includes up to that much
-  generator lag. This is reported with the results.
+  open-loop point, plus timer pacing at one rate for continuity. Spin pacing still has load-generator send lag:
+  its p99 had a median of 272 µs across round 1 runs and 232 µs across round 2 runs, but reached 2.1 and 10.4 ms
+  in two round 1 trials (the client spins at about 197% CPU). Intended-time p99 includes that lag. This is
+  reported with the results.
 
 ### 4.3 The memory comparison used unequal allocators
 
@@ -227,9 +231,11 @@ organization spend limit; the workflow was resumed after the reset, with the sec
 sharpened because its first pass returned nothing. Full findings, verdicts and verifier reasoning are in
 [`results/poc/review_findings.json`](results/poc/review_findings.json).
 
-**What it found.** 57 findings: 52 confirmed, 4 refuted (all from the fairness reviewer), 1 uncertain (the timing
+**What it found.** 62 findings: 57 confirmed (52 from the concurrency, protocol and I/O, semantics and security
+reviewers, and 5 from the fairness reviewer), 4 refuted (all from the fairness reviewer), 1 uncertain (the timing
 side channel of a non-constant-time password comparison, which the verifier judged too small to measure
-remotely; it is fixed anyway). The most serious:
+remotely; it is fixed anyway). Several confirmed entries describe the same defect seen by more than one reviewer:
+the `EXEC` deadlock appears four times and the `MULTI`/`EXEC` `maxmemory` bypass five times. The most serious:
 
 | Finding | Severity | Why the harnesses missed it |
 |---|---|---|
@@ -247,7 +253,8 @@ lacks `--enable-debug-command`), which shows the scenarios detect the defects.
 
 **What it means for the evidence.** The review was the only check that found any of these. Gate 2 as
 pre-registered (differential test, concurrency invariants, error-free benchmarks) was met by a build that could
-be hung by any client in two commands. Two lessons for the decision:
+be hung by any client with a four-command transaction (for example `MULTI`, `SET`, `INFO`, `EXEC`). Two lessons
+for the decision:
 
 * The correctness evidence for a new server has to include adversarial review and fault-oriented tests, not only
   differential and load tests. That is a recurring cost of Candidate A that Valkey users do not pay
@@ -256,12 +263,14 @@ be hung by any client in two commands. Two lessons for the decision:
   writes through transactions, half-closes connections, or runs unauthenticated, so the defective paths were never
   on the measured path.
 
-**Fairness findings.** Two were confirmed and affect how the comparison is read, though no result changed
-direction. Valkey spends about 5% of pipelined CPU on per-command timing and statistics (`getMonotonicUs` 5.0% in
-the depth-16 profile), which rvk does not do, and that favors rvk. rvk's round 1 build paid costs of its own: false
-sharing on shared counters, an `Arc` clone and a vector allocation per command, and each key hashed twice. Those
-disfavored it. The verifier refuted the claim that foldhash invited hash flooding, as speculative. The round 2
-build uses keyed SipHash anyway, as Valkey does, so that difference no longer exists.
+**Fairness findings.** Five were confirmed. Two duplicate correctness findings (no output cap for unauthenticated
+clients; no eviction check for `MULTI`/`EXEC`), and one is the missing TCP keepalive, since added. The other two
+affect how the comparison is read, though no result changed direction. Valkey spends about 5% of pipelined CPU on
+per-command timing and statistics (`getMonotonicUs` 5.0% in the depth-16 profile), which rvk does not do, and that
+favors rvk. rvk's round 1 build paid costs of its own: false sharing on shared counters, an `Arc` clone and a vector
+allocation per command, and each key hashed twice. Those disfavored it. The verifier refuted the claim that foldhash
+invited hash flooding, as speculative. The round 2 build uses keyed SipHash anyway, as Valkey does, so that
+difference no longer exists.
 
 ## 8. What the Part II profiles say about Part I's conclusions
 
@@ -270,7 +279,8 @@ build uses keyed SipHash anyway, as Valkey does, so that difference no longer ex
   is about 1.4× on both hosts. The host change did not undermine it.
 * **A Rust server is subject to the same bound, and the first build was below Valkey.** rvk-1t spent 83% in the
   kernel. The excess was in the wakeup path (`_raw_spin_unlock_irqrestore`, 33% against Valkey's 19%), not in
-  the language. Writing replies once per event-loop pass, as Valkey does, removed most of it.
+  the language. Writing replies once per event-loop pass, as Valkey does, removed most of the excess at depth 16
+  (23.6% → 5.9% of CPU) but only part of it unpipelined (29.6% in round 2, against Valkey's 18.0%).
 * **With pipelining, user space matters and Valkey's prior optimization shows.** At depth 16 the first build
   spent about 40% of its CPU in hash lookups and key comparisons, against about 6% for Valkey, which prefetches
   keys for a whole batch (`memory_prefetch.c`). Flattening rvk's table helped a little. Batch prefetching was not

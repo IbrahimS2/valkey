@@ -1,0 +1,20 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8571
+Testing unit/auth
+[ignore]: Not supported on external server
+[ignore]: Not supported on external server
+[ignore]: Not supported on external server
+[ignore]: Not supported on external server
+[1/1 done]: unit/auth (0 seconds)
+
+                   The End
+
+Execution time of different units:
+  0 seconds - unit/auth
+
+Test Summary: 0 passed, 0 failed
+
+\o/ All tests passed without errors!
+
+Cleanup: may take some time... OK

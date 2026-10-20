@@ -1,0 +1,30 @@
+Cleanup: may take some time... OK
+Starting test server at port 21079
+[ready]: 8642
+Testing unit/type/incr
+[ok]: INCR against nonexistent key (0 ms)
+[ok]: INCR against key created by incr itself (1 ms)
+[ok]: DECR against key created by incr (0 ms)
+[ok]: DECR against key is not exist and incr (0 ms)
+[ok]: INCR against key originally set with SET (0 ms)
+[ok]: INCR over 32bit value (0 ms)
+[ok]: INCRBY over 32bit value with over 32bit increment (1 ms)
+[ok]: INCR fails against key with spaces (left) (1 ms)
+[ok]: INCR fails against key with spaces (right) (0 ms)
+[ok]: INCR fails against key with spaces (both) (1 ms)
+[ok]: DECRBY negation overflow (0 ms)
+[exception]: Executing test client: ERR unknown command 'rpush', with args beginning with: 'mylist' '1'.
+ in valkey::__dispatch__ at tests/support/valkey.tcl:116
+ in r at tests/test_helper.tcl:196
+ in r at tests/support/server.tcl:620
+ in test at tests/support/test.tcl:262
+ in test at tests/support/server.tcl:619
+ in run_external_server_test at tests/support/server.tcl:460
+ in start_server at tests/support/server.tcl:559
+ in execute_test_file at tests/unit/type/incr.tcl:1
+ in execute_test_file at tests/test_helper.tcl:148
+ in test_client_main at tests/test_helper.tcl:717
+ in test_client_main at tests/test_helper.tcl:1146
+ in catch at tests/test_helper.tcl:1146
+ in if at tests/test_helper.tcl:1145
+

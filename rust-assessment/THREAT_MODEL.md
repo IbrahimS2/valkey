@@ -1,6 +1,10 @@
 # Threat model and correctness assessment
 
-Scope: the Rust component that was benchmarked, a multiplexing, auto-pipelining RESP proxy in front of Valkey
+This file has two parts. Part I (§1–6) covers the benchmarked proxy (Part I's Option A, Part II's Candidate B,
+prototype `bench/rust/proxy-poc`) and any Rust sidecar in the request path. Part II (§7–8) covers `rvk-server`
+(Candidate A) and the client-side options (Candidate C).
+
+Part I scope: the Rust component that was benchmarked, a multiplexing, auto-pipelining RESP proxy in front of Valkey
 (Option A, prototype `bench/rust/proxy-poc`). The same analysis applies, with small changes, to any Rust sidecar
 placed in the request path (Option B). It also covers the general claim that Rust would make the data path safer.
 
@@ -213,7 +217,7 @@ implementations.
 The review confirmed several ways for one client to stop or exhaust the server. They are fixed and covered by
 regression scenarios or unit tests (FEATURE_MATRIX.md §11):
 
-* two self-deadlocks inside `EXEC` (any client, two commands);
+* two self-deadlocks inside `EXEC` (any client, four commands, for example `MULTI`, `SET`, `INFO`, `EXEC`);
 * a process abort through `DEBUG SLEEP inf`;
 * unbounded memory: transactions bypassing `maxmemory`, unbounded transaction queues, no caps for
   never-authenticated clients, and a read buffer that could grow to twice the configured limit;
@@ -233,7 +237,8 @@ Remaining known exposure:
 
 ### 7.4 What Rust prevented and what it did not
 
-The review found 52 confirmed defects in about 4,100 lines and **no memory-safety defect**. `rvk-server`'s own
+The review found 52 confirmed correctness and security findings (fewer distinct defects, because reviewers
+overlapped) in the round 1 build, about 3,500 lines, and **no memory-safety defect**. `rvk-server`'s own
 code has one `unsafe` block (the `getrlimit`/`setrlimit` call). Rust's guarantees ruled out buffer overflows,
 use-after-free and data races. The defects that were found are the classes Rust does not prevent:
 
@@ -246,13 +251,14 @@ use-after-free and data races. The defects that were found are the classes Rust 
 | Semantic divergence from Valkey | many (low severity) | WATCH expiry rules, EXPIRETIME rounding, error ordering |
 
 So the security argument for a Rust rewrite ("memory safety") is real but narrow. It removes the bug class behind
-many historical Redis CVEs: integer overflows that became heap corruption in protocol and data-type code. It does nothing for availability, which is what a
-new implementation got wrong here. A product would need the hardening Valkey has accumulated over many years: fuzzing,
-fault injection and a long tail of resource limits.
+many historical Redis CVEs: integer overflows that became heap corruption in protocol and data-type code. It does
+nothing for availability, which is what a new implementation got wrong here. A product would need the hardening
+Valkey has accumulated over many years: fuzzing, fault injection and a long tail of resource limits.
 
 ### 7.5 Supply chain
 
-Nine third-party crates in `rvk-server`'s build: `mio`, `socket2`, `hashbrown`, `libc`, `log`, `paste`, and the
+Nine third-party runtime crates in `rvk-server` (plus three build-time crates, `cc`, `shlex` and `find-msvc-tools`,
+used to compile jemalloc): `mio`, `socket2`, `hashbrown`, `libc`, `log`, `paste`, and the
 `tikv-jemallocator`, `tikv-jemalloc-ctl` and `tikv-jemalloc-sys` crates (the last bundles jemalloc's C code, the
 allocator Valkey also uses). The versions are pinned in `poc/Cargo.lock`. The `rsclient` measurement tool pulls in
 about 80 crates through the `redis` crate and tokio. That is the dependency surface an application takes on when

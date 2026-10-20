@@ -359,17 +359,21 @@ lower bound. R1 = `rvk-1t` ÷ `valkey-1t`, R2 = `rvk-2t` ÷ `valkey-io2`, R3 = `
 
 ## II.1 Findings
 
-1. **Per core, Rust brought no advantage.** Round 1's `rvk-1t` reached 0.80–0.91× of `valkey-1t` unpipelined
-   and 0.73–0.96× at depth 16. After round 2's changes it was at parity: 0.97–1.03× unpipelined and
+1. **Per core, Rust brought no material advantage at the pre-registered points.** Round 1's `rvk-1t` reached
+   0.80–0.91× of `valkey-1t` unpipelined at 50 and 200 connections, and 0.73–0.96× at depth 16. Outside those
+   points it was 1.14× and 1.18× faster at 1 and 10 connections, at lower CPU per operation (below the 1.20× bar
+   for an advantage), and 0.99× at 1000. After round 2's changes it was at parity: 0.97–1.03× unpipelined and
    0.96–1.14× at depth 16. Both the deficit and its removal came from implementation choices (§II.4), not the
    language.
-2. **Multi-threading beats Valkey's single-endpoint option on 2 vCPUs, by a wide margin.** R2 was 2.4–2.8×
-   unpipelined and 1.2–1.9× pipelined in round 1, and 2.8–3.2× and 1.5–2.9× in round 2. `io-threads 2` is weak
-   on this budget (Part I), so this measures rvk against a configuration outside its intended regime.
-3. **Against two Valkey shards on the same 2 CPUs, rvk-2t roughly matched them and never beat them by the
-   required 20%.** Unpipelined, rvk-2t was level or ahead (R3 0.99–1.17 in round 1, 1.05–1.19 in round 2) at
-   lower CPU per operation, but most of those points were limited by the load generator. Pipelined, which removes that
-   limit, R3 was 0.76–0.88 in round 1 and 0.85–1.06 in round 2.
+2. **Multi-threading beats Valkey's single-endpoint option on 2 vCPUs, by a wide margin.** On the five Gate 3
+   points, R2 was 2.2–2.8× unpipelined and 1.1–1.9× pipelined in round 1, and 2.8–3.2× and 1.5–2.9× in round 2.
+   `io-threads 2` is weak on this budget (Part I), so this measures rvk against a configuration outside its intended
+   regime.
+3. **Against two Valkey shards on the same 2 CPUs, rvk-2t roughly matched them and did not beat them by the
+   required 20% at any Gate 3 point.** Unpipelined, rvk-2t was level or ahead (R3 0.99–1.17 in round 1,
+   1.05–1.19 in round 2) at lower CPU per operation, but most of those points were limited by the load generator.
+   Pipelined, which removes that limit, R3 was 0.72–0.88 in round 1 and 0.85–1.06 in round 2. Outside the Gate 3
+   points, round 1 measured 1.29× at 10 connections (§II.3) and 1.27× on `SET EX 5` (§II.7).
 4. **Pre-registered Gate 3 (round 1): NO-GO.** 0 of 5 points met GO and 1 of 5 met CONDITIONAL GO (3 needed).
    **Round 2, post hoc:** 0 of 5 met GO. 4 of 5 met the CONDITIONAL GO throughput condition. The latency condition
    failed at the lowest offered load: at 20k ops/s, rvk-2t's p99 was 1.42× that of the best single-endpoint
@@ -401,8 +405,9 @@ lower bound. R1 = `rvk-1t` ÷ `valkey-1t`, R2 = `rvk-2t` ÷ `valkey-io2`, R3 = `
 | Host | Same CPU model (Xeon, model 207, 2.1 GHz) throughout Part II. The container restarted twice. One suite (`p2-clients`) was resumed after a restart with `harness.py run --resume`, after checking the CPU model and binary hashes |
 
 **Baselines move over time, which is why they are re-run.** On the same host and binaries, `valkey-1t` at depth 16
-gave 746,707 ops/s in round 1 and 869,489 ops/s in round 2, four hours later. Every ratio in this part compares
-configurations measured in the same round.
+gave 746,707 ops/s in round 1 and 869,489 ops/s in round 2, about nine hours later. Across all baselines, pipelined
+`valkey-1t` and `valkey-2shard` rose 16–28% between rounds, and the others moved by −11% to +10%. Every ratio in
+this part compares configurations measured in the same round.
 
 **Anomalies, recorded rather than dropped:**
 
@@ -466,7 +471,8 @@ ops/s median (server CPU µs/op; p50 µs).
 | 1000 | 96,981 (10.2; 10,633) | 94,087 (21.1; 10,363) | 223,076 (8.8; 4,252) | 96,349 (10.2; 9,593) | 255,370⚠ (7.5; 3,750) | 2.71× | 1.14× |
 | 200, pipeline 16 | 669,507 (1.5; 4,403) | 921,979 (2.1; 3,402) | 1,391,984 (1.4; 2,187) | 502,725 (2.0; 6,058) | 1,007,562 (2.0; 3,125) | 1.09× | 0.72× |
 
-At 1 and 10 connections rvk had the lowest latency of all (p50 37–40 µs at 1 connection, against 42 µs for Valkey).
+At 1 connection both rvk configurations had the lowest latency (p50 37–38 µs, against 42 µs for Valkey). At 10
+connections rvk-2t did (40 µs, against 54 µs for two shards).
 At 10 connections, before the load generator saturates, rvk-2t reached 1.29× two shards.
 
 ### Gate 3, as pre-registered
@@ -498,12 +504,13 @@ lowers throughput. Files: `results/profile2/` (round 1) and `results/profile2_r2
   the load-generator thread on another CPU. Round 1 wrote each connection's replies as soon as it produced
   them, so the client was woken repeatedly. Valkey writes all replies at the end of an event-loop pass
   (`beforeSleep`), so the client is woken once per pass. Round 2 does the same. At depth 16, that cost fell
-  from 23.6% to 5.9%.
+  from 23.6% to 5.9%. Unpipelined it fell only from 33.4% to 29.6% (`results/profile2_r2/rvk-1t-p1`; Valkey
+  18.0%), so the profiles do not fully explain round 2's unpipelined per-core parity.
 * **Lookups.** Each rvk lookup chases dependent cache misses (table, entry, key bytes). Valkey prefetches keys
   for a whole pipelined batch (`memory_prefetch.c`); its lookup cost is about 6% at depth 16. Round 2's flatter
   table removed one miss, but lookups plus key comparison are still 54% of rvk-1t's pipelined CPU. Batch
-  prefetching was not built. It is the obvious next optimization, and the reason Valkey keeps a per-core edge
-  on some pipelined points.
+  prefetching was not built. It is the obvious next optimization. Hypothesis (not measured): it accounts for
+  most of Valkey's remaining per-core edge on some pipelined points.
 * **Valkey's bookkeeping.** `getMonotonicUs` at 5.0% belongs to per-command latency and statistics tracking
   that rvk does not do. That favors rvk by about 5% at depth 16 (fairness finding, REASSESSMENT.md §7).
 
@@ -587,9 +594,12 @@ Precise pacing (`--spin-pacing`). p99 µs from the actual send time, with p99 fr
 | maxmemory 256 MB, LRU, uniform | valkey-1t | 103,942 | 9.43 | 1,159 | **0.323** | 1.61M keys held |
 | | rvk-1t, round 1 | 93,740 | 10.46 | 972 | 0.279 | 1.39M keys |
 | | rvk-1t, round 2 | 104,028 | 9.39 | 971 | **0.200** | 1.00M keys (§II.8) |
+| | valkey-1t, round 2 | 110,248 | 8.93 | 1,027 | **0.322** | 1.61M keys; the same-round baseline for the row above |
 | maxmemory 256 MB, LRU, Zipf 0.99 | valkey-1t | 105,541 | 9.27 | 1,113 | 0.730 | |
+| | valkey-1t, round 2 | 114,423 | 8.62 | 1,020 | 0.733 | |
+| | rvk-1t, round 2 | 122,185 | 8.07 | 896 | 0.725 | |
 | | rvk-2t, round 2 | 277,119⚠ | 6.75 | 431 | 0.776 | the skewed working set fits even in fewer keys |
-| AOF `everysec`, write90 (Valkey only) | valkey-1t | 76,137 | 9.64 | 4,936 | – | **30% below the same workload without AOF** (108,957). rvk has no persistence, so every rvk comparison is against Valkey with persistence off |
+| AOF `everysec`, write90 (Valkey only; `p2-aof`, added after pre-registration) | valkey-1t | 76,137 | 9.64 | 4,936 | – | **30% below the same workload without AOF** (108,957). rvk has no persistence, so every rvk comparison is against Valkey with persistence off |
 | | valkey-2shard | 174,566 | 9.36 | 4,243 | – | |
 | Part I proxy, read90 (continuity) | rust-proxy | 132,926 | 13.18 | 783 | 1.000 | 0.56× two shards at 1.60× CPU/op |
 
@@ -647,8 +657,8 @@ overload. At 300k, p99 was 6.0 ms for `valkey-1t`, 3.7 ms for two shards, 3.0 ms
 
 ## II.10 Cost per million operations (read90, 50 connections, unpipelined)
 
-Assumed price: $0.05 per vCPU-hour, an illustrative parameter rather than a quote. The 1M ops/s column assumes linear scale-out of
-the measured unit, which was not verified. Consumed CPU-s per Mop equals server CPU µs/op.
+Assumed price: $0.05 per vCPU-hour, an illustrative parameter rather than a quote. The 1M ops/s column assumes
+linear scale-out of the measured unit, which was not verified. Consumed CPU-s per Mop equals server CPU µs/op.
 
 | topology | round 1 CPU-s/Mop | round 2 CPU-s/Mop | round 2 vCPUs for 1M ops/s | round 2 monthly cost vs two shards |
 |---|---|---|---|---|
@@ -675,7 +685,7 @@ Measured, but specific to this setup:
 * The load generator limits the unpipelined `rvk-2t` and two-shard points. Pipelined runs avoid that limit but
   measure a different regime.
 * Round 2 is post hoc (it was designed after seeing round 1). The baselines also changed between rounds by up
-  to 16% on the same host.
+  to 28% on the same host.
 
 Not measured:
 
